@@ -1,0 +1,85 @@
+# (暂时没有使用到该配置) 执行模型测试的场景类型；可选值: perf(推理性能测试)。TODO: eval(模型评测)
+type: perf
+# 是否在每次测试模型之后重启模型服务；可选值: true/false
+restart_model: false
+
+# 模型相关配置
+# (必填) 模型名称，调用模型服务时指定的模型名称
+model_name: "qwen3"
+# (必填) 模型 tokenizer 路径，可以配置为模型权重路径；evalscope 使用 random 数据集需要配置模型tokenizer路径
+tokenizer_path: "/model/Qwen3-30B-A3B"
+# (必填) 模型服务API地址
+url: "http://127.0.0.1:8000/v1/chat/completions"
+
+# 使用的数据集
+# 模型推理性能测试：LLM: "random", VLM: "random_vl"
+# 模型评测：LLM: ["gsm8k", "arc", "ceval"], VLM：["DocVQA_VAL", "MMBench_DEV_EN"]
+dataset: "random"
+# dataset: ["gsm8k", "arc", "ceval"]
+
+# 输出目录
+result_dir: "./results"
+# 模型测试结果保存文件前缀，测试结果会保存在 "{file_prefix}-{timestamp}.xlsx" 文件中
+result_file_prefix: "model-benchmark"
+
+# 模型重启后检查模型状态相关配置。模型重启之后健康检查的初次健康检查前等待时间(单位: 秒)、间隔(单位: 秒)和重试次数
+healthcheck:
+  initial_delay: 120
+  interval: 5
+  retry_count: 60
+
+# 运行模型服务的容器名称；所有服务器上的容器名称必须一致；如果不需要每次模型测试之后重启模型服务，可忽略此字段
+container_name: "qwen3"
+restart_cmd: |
+  sudo docker restart {container_name}
+# 重启远程节点上的模型时使用的 ssh 命令
+# {cmd} 将被替换为上面的`restart_cmd`，{port}, {user}, {ip} 将会被替换为`hosts`中的值
+ssh_cmd: |
+  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p {port} {user}@{ip} {cmd}
+
+# (多机部署模型场景下必填，单机场景可忽略) 部署模型服务的服务器IP、用户名、端口
+# *** 必须提前配置免密 ***
+hosts:
+  - ip: 10.1.1.10
+    user: root
+    port: 22
+  - ip: 10.1.1.11
+    user: root
+    port: 22
+
+# 模型推理性能测试场景下测试用例
+test_case:
+  # 测试用例生成方式:
+  #   1) 使用输入输出遍历并发/请求数
+  #   2) 输入输出与并发/请求数一一组合，需要 context 和 batch_request 长度一致
+  mode: 1
+  # 上下文长度: (输入长度, 输出长度)
+  context:
+    - (1024, 256)
+    - (1024, 1024)
+    - (2048, 2048)
+    - (4096, 1024)
+  # batch_size 并发请求数，request_count 请求数: (batch_size, request_count)
+  batch_request:
+    - (1, 50)
+    - (16, 50)
+    - (32, 64)
+    - (48, 96)
+    - (64, 128)
+    - (80, 160)
+    - (96, 192)
+    - (112, 224)
+    - (128, 256)
+    - (160, 320)
+    - (192, 384)
+    - (224, 448)
+    - (256, 512)
+    - (320, 640)
+    - (384, 768)
+    - (448, 896)
+    - (512, 1024)
+    - (640, 1280)
+    - (768, 1536)
+    - (896, 1792)
+    - (1024, 1024)
+    - (1024, 2048)
