@@ -1,5 +1,10 @@
 # 各个chart中使用到的镜像
 
+
+# 其他
+busybox:1.37.0
+eeacms/rsync:2.9
+
 # Prometheus
 docker.io/busybox:latest
 docker.io/bats/bats:v1.4.1

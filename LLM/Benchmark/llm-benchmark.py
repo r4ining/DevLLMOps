@@ -25,7 +25,7 @@ def get_logger(level=logging.INFO):
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(level)
         # 创建格式化器
-        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         console_handler.setFormatter(formatter)
         # 添加处理器到logger
         logger.addHandler(console_handler)
@@ -214,7 +214,10 @@ class BenchmarkRunner:
             result = run_perf_benchmark(bench_args)
             return self.parse_benchmark_result(result[0])
         except SystemExit as e:
-            logger.error(f"基准测试异常退出 (code={e.code})")
+            logger.error(f"基准测试异常退出, ERROR message: {e}")
+            return None
+        except ConnectionRefusedError as e:
+            logger.error(f"无法连接到模型服务: {e}")
             return None
         except Exception as e:
             logger.error(f"基准测试执行失败: {e}")
@@ -226,10 +229,10 @@ class BenchmarkRunner:
         if failed > 0:
             comment = f"失败请求数: {failed}/{result.get('Total requests', 'N/A')}"
         return {
-            "ttft": result.get("Average time to first token (s)"),
-            "tpot": result.get("Average time per output token (s)"),
-            "throughput": result.get("Total token throughput (tok/s)"),
-            "duration": result.get("Time taken for tests (s)"),
+            "ttft": result.get("Average time to first token (s)", "N/A"),
+            "tpot": result.get("Average time per output token (s)", "N/A"),
+            "throughput": result.get("Total token throughput (tok/s)", "N/A"),
+            "duration": result.get("Time taken for tests (s)", "N/A"),
             "comment": comment
         }
 
@@ -243,15 +246,20 @@ class BenchmarkRunner:
 
     def save_result(self, ws, wb, context, batch_req, result):
         if result is None:
-            logger.warning("结果为空，跳过保存")
-            return
-        row = [
-            context[0], context[1],
-            batch_req[0], batch_req[1],
-            result["ttft"], result["tpot"],
-            result["throughput"], result["duration"],
-            result["comment"]
-        ]
+            row = [
+                context[0], context[1],
+                batch_req[0], batch_req[1],
+                "N/A", "N/A", "N/A", "N/A",
+                "不能正常连接模型服务(模型服务异常等原因)，未能正常测试获取到结果"
+            ]
+        else:
+            row = [
+                context[0], context[1],
+                batch_req[0], batch_req[1],
+                result["ttft"], result["tpot"],
+                result["throughput"], result["duration"],
+                result["comment"]
+            ]
         ws.append(row)
         os.makedirs(os.path.dirname(self.result_file), exist_ok=True)
         wb.save(self.result_file)
@@ -267,7 +275,7 @@ class BenchmarkRunner:
         wb, ws = self.create_workbook()
 
         for i, (context, batch_req) in enumerate(test_cases, 1):
-            logger.info(f"_PROGRESS_ {i}/{len(test_cases)}")
+            logger.info(f"总体测试进度: {i}/{len(test_cases)}")
 
             if self.config.get('restart_model', False):
                 if not self.restart_model_service() or not self.health_check():
@@ -277,6 +285,7 @@ class BenchmarkRunner:
                     continue
 
             result = self.run_single_benchmark(context, batch_req)
+            logger.info(f"本轮测试结果: {result}")
             self.save_result(ws, wb, context, batch_req, result)
 
         logger.info("🎉 所有测试完成！")
