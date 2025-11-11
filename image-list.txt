@@ -4,6 +4,7 @@
 # 其他
 busybox:1.37.0
 eeacms/rsync:2.9
+bitnamilegacy/mysql:8.0.34
 
 # Prometheus
 docker.io/busybox:latest
