@@ -1,0 +1,9 @@
+ak: xxx
+sk: xxx
+region: cn-east-3
+namespace: region
+limit: 1000
+# 仅列出是否公开的仓库；true/false 必须要带引号
+is_public: "false"
+# ['public', 'private']
+target_attr: public
