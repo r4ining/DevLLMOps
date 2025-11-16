@@ -14,7 +14,7 @@ REGISTRY="swr.cn-east-3.myhuaweicloud.com/r4in"
 images=($(grep -Ev "^#|^$" ${image_file}))
 
 function log {
-    echo -e "[$(date +'%F %T')] $@"
+    echo -e "[$(date +'%F %T')] \033[36m$@\033[0m"
 }
 
 function usage() {

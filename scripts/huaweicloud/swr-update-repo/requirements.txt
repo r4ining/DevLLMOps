@@ -1,0 +1,2 @@
+huaweicloudsdkcore==3.1.175
+huaweicloudsdkswr==3.1.175

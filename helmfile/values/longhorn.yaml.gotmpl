@@ -1,0 +1,16 @@
+global:
+  # -- Global override for container image registry.
+  imageRegistry: "swr.cn-east-3.myhuaweicloud.com/r4in"
+
+
+ingress:
+  enabled: {{ .Values.__LONGHORN_INGRESS_ENABLE__ }}
+  ingressClassName: ~
+  host: longhorn.{{ .Values.__DOMAIN__ }}
+  tls: false
+  secureBackends: false
+  tlsSecret: longhorn.local-tls
+  path: /
+  pathType: ImplementationSpecific
+  annotations:
+  secrets:
