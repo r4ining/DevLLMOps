@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/storage/minio-tenant
+  version: v7.1.1
+  wait: true
+  installed: true
+  name: minio-tenant
+  namespace: minio-tenant
+  skipDeps: true
+  labels:
+    app: minio-tenant
+  values:
+  - ../values/minio-tenant.yaml.gotmpl

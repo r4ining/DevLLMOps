@@ -1,0 +1,66 @@
+# Root key for MinIO Tenant Chart
+tenant:
+  name: myminio
+  image:
+    repository: {{ .Values | get "__REGISTRY__" "quay.io" }}/minio/minio
+    tag: RELEASE.2025-04-08T15-41-24Z
+    pullPolicy: IfNotPresent
+  ###
+  #
+  # An array of Kubernetes secrets to use for pulling images from a private ``image.repository``.
+  # Only one array element is supported at this time.
+  imagePullSecret: { }
+
+  ###
+  # Metadata that will be added to the statefulset and pods of all pools
+  poolsMetadata:
+    ###
+    # Specify `annotations <https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/>`__ to associate to Tenant pods.
+    annotations: { }
+    ###
+    # Specify `labels <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/>`__ to associate to Tenant pods.
+    labels: { }
+  pools:
+    - servers: {{ .Values.__MINIO_TENANT_POOL_SERVERS__ }}
+      name: pool-0
+      volumesPerServer: {{ .Values.__MINIO_TENANT_POOL_SERVERS__ }}
+      size: {{ .Values.__MINIO_TENANT_POOL_SIZE__ }}
+      storageAnnotations: { }
+      storageLabels: { }
+      annotations: { }
+      labels: { }
+      tolerations: [ ]
+      nodeSelector: { }
+      affinity: { }
+      resources: { }
+
+
+  mountPath: /export
+  subPath: /data
+  metrics:
+    enabled: true
+    port: 9000
+    protocol: http
+  priorityClassName: ""
+  additionalVolumes: [ ]
+  additionalVolumeMounts: [ ]
+
+ingress:
+  api:
+    enabled: {{ .Values.__MINIO_TENANT_INGRESS_ENABLE__ }}
+    ingressClassName: ""
+    labels: { }
+    annotations: { }
+    tls: [ ]
+    host: minio.{{ .Values.__DOMAIN__ }}
+    path: /
+    pathType: Prefix
+  console:
+    enabled: {{ .Values.__MINIO_TENANT_INGRESS_ENABLE__ }}
+    ingressClassName: ""
+    labels: { }
+    annotations: { }
+    tls: [ ]
+    host: minio-console.{{ .Values.__DOMAIN__ }}
+    path: /
+    pathType: Prefix

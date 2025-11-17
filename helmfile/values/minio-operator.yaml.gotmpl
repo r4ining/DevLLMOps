@@ -1,0 +1,27 @@
+###
+# Root key for Operator Helm Chart
+operator:
+  env:
+    - name: OPERATOR_STS_ENABLED
+      value: "on"
+  image:
+    repository: {{ .Values | get "__REGISTRY__" "quay.io" }}/minio/operator
+    tag: v7.1.1
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  nodeSelector: {}
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: name
+                operator: In
+                values:
+                  - minio-operator
+          topologyKey: kubernetes.io/hostname
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+      ephemeral-storage: 500Mi

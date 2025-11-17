@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/storage/minio-operator
+  version: v7.1.1
+  wait: true
+  installed: true
+  name: minio-operator
+  namespace: minio-operator
+  skipDeps: true
+  labels:
+    app: minio-operator
+  values:
+  - ../values/minio-operator.yaml.gotmpl

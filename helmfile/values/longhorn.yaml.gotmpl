@@ -1,6 +1,6 @@
 global:
   # -- Global override for container image registry.
-  imageRegistry: "swr.cn-east-3.myhuaweicloud.com/r4in"
+  imageRegistry: {{ .Values | get "__REGISTRY__" "" }}
 
 
 ingress:
