@@ -59,5 +59,7 @@ longhornio/csi-snapshotter:v8.4.0-20251030
 longhornio/livenessprobe:v2.17.0-20251030
 
 
+# local-path-provisioner
+rancher/local-path-provisioner:v0.0.32
 
 

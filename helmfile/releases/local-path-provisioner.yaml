@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/storage/local-path-provisioner
+  version: 0.0.32
+  wait: true
+  installed: true
+  name: local-path-provisioner
+  namespace: local-path-provisioner
+  skipDeps: true
+  labels:
+    app: local-path-provisioner
+  values:
+  - ../values/local-path-provisioner.yaml.gotmpl
