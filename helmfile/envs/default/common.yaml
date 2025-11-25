@@ -24,6 +24,8 @@ __LONGHORN_INGRESS_ENABLE__: true
 __MINIO_TENANT_INGRESS_ENABLE__: true
 __MINIO_TENANT_POOL_SERVERS__: 1
 __MINIO_TENANT_POOL_SIZE__: 10Gi
+__MINIO_ACCESS_KEY__: "minio"
+__MINIO_SECRET_KEY__: "minioadmin666"
 
 # local-path-provisioner
 __LOCAL_PATH_PROVISIONER_DEFAULT_NODE_PATH__: /data/local-path-provisioner

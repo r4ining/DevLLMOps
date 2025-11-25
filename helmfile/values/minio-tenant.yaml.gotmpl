@@ -1,6 +1,6 @@
 # Root key for MinIO Tenant Chart
 tenant:
-  name: myminio
+  name: minio
   image:
     repository: {{ .Values | get "__REGISTRY__" "quay.io" }}/minio/minio
     tag: RELEASE.2025-04-08T15-41-24Z
@@ -9,8 +9,12 @@ tenant:
   #
   # An array of Kubernetes secrets to use for pulling images from a private ``image.repository``.
   # Only one array element is supported at this time.
-  imagePullSecret: { }
-
+  imagePullSecret: {}
+  configSecret:
+    name: myminio-env-configuration
+    accessKey: {{ .Values.__MINIO_ACCESS_KEY__ }}
+    secretKey: {{ .Values.__MINIO_SECRET_KEY__ }}
+    #existingSecret: true
   ###
   # Metadata that will be added to the statefulset and pods of all pools
   poolsMetadata:
@@ -23,7 +27,7 @@ tenant:
   pools:
     - servers: {{ .Values.__MINIO_TENANT_POOL_SERVERS__ }}
       name: pool-0
-      volumesPerServer: {{ .Values.__MINIO_TENANT_POOL_SERVERS__ }}
+      volumesPerServer: 1
       size: {{ .Values.__MINIO_TENANT_POOL_SIZE__ }}
       storageAnnotations: { }
       storageLabels: { }
@@ -34,7 +38,6 @@ tenant:
       affinity: { }
       resources: { }
 
-
   mountPath: /export
   subPath: /data
   metrics:
@@ -44,6 +47,11 @@ tenant:
   priorityClassName: ""
   additionalVolumes: [ ]
   additionalVolumeMounts: [ ]
+
+  certificate:
+    externalCaCertSecret: [ ]
+    externalCertSecret: [ ]
+    requestAutoCert: false
 
 ingress:
   api:

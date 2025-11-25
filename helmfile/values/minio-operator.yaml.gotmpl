@@ -9,6 +9,10 @@ operator:
     tag: v7.1.1
     pullPolicy: IfNotPresent
   replicaCount: 2
+  sidecarImage:
+    repository: {{ .Values | get "__REGISTRY__" "quay.io" }}/minio/operator-sidecar
+    tag: v7.0.1
+    pullPolicy: IfNotPresent
   nodeSelector: {}
   affinity:
     podAntiAffinity:

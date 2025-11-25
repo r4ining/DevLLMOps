@@ -26,6 +26,7 @@ docker.io/bitnamilegacy/grafana:12.1.1-debian-12-r1
 
 # MinIO
 quay.io/minio/operator:v7.1.1
+quay.io/minio/operator-sidecar:v7.0.1
 quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
 
 # Loki
