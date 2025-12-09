@@ -62,10 +62,11 @@ function kube_prompt_info() {
         return
     fi
 
-    blue_color="%F{blue}"
-    red_color="%F{red}"
+    blue_color="%F{blue}"   # 加粗蓝色, 未加粗，使用 %f 可以重置颜色
+    red_color="%B%F{red}"     # 加粗红色
+    reset_color="%f%b"        # 重置颜色 + 重置加粗
 
-    echo " %{☸️%} ${blue_color}K8S:(%f${red_color}${kube_env}%f${blue_color})%f "
+    echo " %{☸️%} ${blue_color}K8S:(%f${red_color}${kube_env}${reset_color}${blue_color})%f "
 }
 
 
