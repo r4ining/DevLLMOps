@@ -1,0 +1,45 @@
+model = "deepseek-chat"
+model_provider = "deepseek"
+
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+env_key = "DS_API_KEY"
+wire_api = "chat"
+
+[profiles.deepseek]
+model_provider = "deepseek"
+model = "deepseek-chat"
+
+
+[model_providers.modelscope]
+name = "modelscope"
+base_url = "https://api-inference.modelscope.cn/v1"
+env_key = "MODELSCOPE_API_KEY"
+wire_api = "chat"
+
+[profiles.modelscope]
+model_provider = "modelscope"
+model = "Qwen/Qwen3-32B"
+
+
+[model_providers.bailian]
+name = "bailian"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+env_key = "BAILIAN_API_KEY"
+wire_api = "chat"
+
+[profiles.bailian]
+model_provider = "bailian"
+model = "qwen3-max"
+
+
+[projects."/Users/wangshihong/Git-repo/DevLLMOps"]
+trust_level = "trusted"
+
+[projects."/Users/wangshihong/Git-repo/codex-test"]
+trust_level = "trusted"
+
+[projects."/Users/wangshihong/Git-repo/ai-do"]
+trust_level = "trusted"
