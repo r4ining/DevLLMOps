@@ -1,0 +1,26 @@
+# 需要 mock 数据的节点；支持范围模式，比如 node-[0001..0300]，将会展开为 node-0001, node-0002, ..., node-0300
+nodes:
+  - node-[0001..0200]
+  - worker-[0001..0150]
+  - gpu-node-0001
+
+# 节点的资源规格
+spec:
+  cpu_cores: 16
+  memory_bytes: 549755813888   # 512 GiB
+  disk_bytes: 2147483648000    # 2 TiB
+
+# mock 数据时，会根据下面的值生成数据，在监控面板上看到的将会是指标将会是在这个值上下
+metrics:
+  cpu: 2         # 2%  CPU 使用率
+  memory: 40     # 40% 内存
+  disk: 35       # 35% 磁盘使用率
+
+# Schedule configuration
+schedule:
+  interval_seconds: 60  # 每隔 60 秒更新一次数据
+
+# 并发进程
+runtime:
+  workers: 16          # Number of worker threads
+  batch_size: 100      # Nodes per batch

@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fake-node-exporter-config
+data:
+  config.yaml: |
+    # 需要 mock 数据的节点；支持范围模式，比如 node-[0001..0300]，将会展开为 node-0001, node-0002, ..., node-0300
+    nodes:
+      - node-[0001..0200]
+      - worker-[0001..0150]
+      - gpu-node-0001
+
+    # 节点的资源规格
+    spec:
+      cpu_cores: 16
+      memory_bytes: 549755813888   # 512 GiB
+      disk_bytes: 2147483648000    # 2 TiB
+
+    # mock 数据时，会根据下面的值生成数据，在监控面板上看到的将会是指标将会是在这个值上下
+    metrics:
+      cpu: 2         # 2%  CPU 使用率
+      memory: 40     # 40% 内存
+      disk: 35       # 35% 磁盘使用率
+
+    # Schedule configuration
+    schedule:
+      interval_seconds: 60  # 每隔 60 秒更新一次数据
+
+    # 并发进程
+    runtime:
+      workers: 16          # Number of worker threads
+      batch_size: 100      # Nodes per batch
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-node-exporter
+  labels:
+    app: fake-node-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-node-exporter
+  template:
+    metadata:
+      labels:
+        app: fake-node-exporter
+    spec:
+      # nodeSelector:
+      #   k8s/monitor: "on"
+      containers:
+      - name: node-exporter
+        image: swr.cn-east-3.myhuaweicloud.com/r4in/fake-node-exporter:v0.3.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9100
+          name: metrics
+        env:
+        - name: MOCK_CONFIG_PATH
+          value: /config/config.yaml
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 16
+            memory: 32Gi
+      volumes:
+      - name: config-volume
+        configMap:
+          name: fake-node-exporter-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fake-node-exporter
+  labels:
+    app: fake-node-exporter
+spec:
+  selector:
+    app: fake-node-exporter
+  ports:
+  - port: 9100
+    targetPort: 9100
+    name: metrics
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fake-node-exporter
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: fake-node-exporter
+  endpoints:
+  - port: metrics
+    interval: 90s
+    scrapeTimeout: 60s
+    metricRelabelings:
+    - sourceLabels: []
+      targetLabel: cluster
+      replacement: drx
+      action: replace
+    - sourceLabels: [nodename]
+      targetLabel: instance
+      action: replace
