@@ -1,0 +1,9 @@
+{{- if .Values.topologyConfigMap.enabled -}}
+apiVersion: v1
+data:
+  topology.yml: |-
+{{ toYaml .Values.topology | indent 4 }}
+kind: ConfigMap
+metadata:
+  name: topology
+{{- end -}}

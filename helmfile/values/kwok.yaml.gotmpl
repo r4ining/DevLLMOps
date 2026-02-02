@@ -1,0 +1,14 @@
+image:
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Image repository.
+  repository: {{ .Values | get "__REGISTRY__" "registry.k8s.io" }}/kwok/kwok
+  tag: ""
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: 256Mi
+  limits:
+    cpu: 8
+    memory: 16Gi

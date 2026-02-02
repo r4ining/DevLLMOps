@@ -1,0 +1,19 @@
+bindPort = 7000
+# 指定监听在本地的 vHost 端口
+vHostHttpPort = 80
+# vhostHTTPSPort = 443
+
+# frpc 与 frps 身份验证相关配置
+auth.method = "token"
+auth.token = "gKorkxNogJGolpNL6D3F9OmjPhm"
+
+# Web 页面相关配置
+## 默认为 127.0.0.1，如果需要公网访问，需要修改为 0.0.0.0。
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+## dashboard 用户名密码，可选，默认为空
+webServer.user = "admin"
+webServer.password = "admin"
+## TLS 证书
+webServer.tls.certFile = "server.crt"
+webServer.tls.keyFile = "server.key"

@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/common/fake-gpu-operator
+  version: 0.0.67
+  wait: true
+  installed: true
+  name: fake-gpu-operator
+  namespace: fake-gpu-operator
+  skipDeps: true
+  labels:
+    app: fake-gpu-operator
+  values:
+  - ../values/fake-gpu-operator.yaml.gotmpl

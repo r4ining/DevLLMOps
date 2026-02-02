@@ -98,5 +98,19 @@ docker.elastic.co/kibana/kibana:8.14.3
 downloads.unstructured.io/unstructured-io/unstructured-api:latest
 
 
+# fake-gpu-operator
+ghcr.io/run-ai/fake-gpu-operator/device-plugin:0.0.67
+ghcr.io/run-ai/fake-gpu-operator/kwok-gpu-device-plugin:0.0.67
+ghcr.io/run-ai/fake-gpu-operator/mig-faker:0.0.67
+ghcr.io/run-ai/fake-gpu-operator/status-exporter:0.0.67
+ghcr.io/run-ai/fake-gpu-operator/status-updater:0.0.67
+ghcr.io/run-ai/fake-gpu-operator/topology-server:0.0.67
+ubuntu:22.04
+ubuntu:24.04
+
+
+# kwok
+registry.k8s.io/kwok/kwok:v0.7.0
+
 
 

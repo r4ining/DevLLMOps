@@ -1,0 +1,25 @@
+# 填写自己实际的 frps 服务端的IP和端口
+serverAddr = "1.2.3.4"
+serverPort = 7000
+
+# 与服务端身份验证配置，需要与服务端的 auth.token 一致
+auth.token = "gKorkxNogJGolpNL6D3F9OmjPhm"
+
+[[proxies]]
+name = "ssh-tcp"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 6000
+
+[[proxies]]
+name = "web-a"
+type = "http"
+localPort = 8080
+customDomains = ["a.example.com"]
+
+[[proxies]]
+name = "web-b"
+type = "http"
+localPort = 80
+customDomains = ["b.example.com"]

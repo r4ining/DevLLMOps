@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/common/kwok
+  version: v0.7.0
+  wait: true
+  installed: true
+  name: kwok
+  namespace: kwok
+  skipDeps: true
+  labels:
+    app: kwok
+  values:
+  - ../values/kwok.yaml.gotmpl

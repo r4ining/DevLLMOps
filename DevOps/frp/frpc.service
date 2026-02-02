@@ -1,0 +1,15 @@
+# /etc/systemd/system/frpc.service
+
+[Unit]
+# 服务名称，可自定义
+Description = frp client
+After = network.target syslog.target
+Wants = network.target
+
+[Service]
+Type = simple
+# 启动frpc的命令，需修改为您的frpc的安装路径
+ExecStart = /usr/local/bin/frpc -c /etc/frp/frpc.toml
+
+[Install]
+WantedBy = multi-user.target

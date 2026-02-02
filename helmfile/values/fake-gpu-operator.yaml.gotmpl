@@ -1,0 +1,196 @@
+environment:
+  openshift: false
+  fakeCSVVersion: 25.10.0
+  resourceReservationNamespace: runai-reservation
+
+devicePlugin:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/device-plugin
+    tag: ""
+  resources: 
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "200m"
+      memory: "200Mi"
+
+statusUpdater:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/status-updater
+    tag: ""
+  resources: 
+    requests:
+      cpu: "200m"
+      memory: "200Mi"
+    limits:
+      cpu: "400m"
+      memory: "400Mi"
+
+topologyServer:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/topology-server
+    tag: ""
+  resources: 
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "200m"
+      memory: "200Mi"
+
+statusExporter:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/status-exporter
+    tag: ""
+  resources: 
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "200m"
+      memory: "200Mi"
+  topologyMaxExportInterval: 10s
+  # If using many KWOK nodes, you may need to increase the resources for the KWOK status-exporter
+  kwok:
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "100Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+kwokGpuDevicePlugin:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/kwok-gpu-device-plugin
+    tag: ""
+  resources: 
+    requests:
+      cpu: "100m"
+      memory: "200Mi"
+    limits:
+      cpu: "200m"
+      memory: "400Mi"
+
+kwokDraPlugin:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/kwok-dra-plugin
+    tag: ""
+  resources: 
+    requests:
+      cpu: "100m"
+      memory: "200Mi"
+    limits:
+      cpu: "200m"
+      memory: "400Mi"
+
+migFaker:
+  enabled: true
+  image:
+    pullPolicy: Always
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/mig-faker
+    tag: ""
+
+gpuOperator:
+  enabled: true
+
+runtimeClass:
+  enabled: true
+
+topologyConfigMap:
+  enabled: true
+
+draPlugin:
+  enabled: true
+  image:
+    repository: {{ .Values | get "__REGISTRY__" "ghcr.io" }}/run-ai/fake-gpu-operator/dra-plugin-gpu
+    pullPolicy: Always
+    tag: ""
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  kubeletPlugin:
+    priorityClassName: "system-node-critical"
+    updateStrategy:
+      type: RollingUpdate
+    podAnnotations: {}
+    podSecurityContext: {}
+    nodeSelector: 
+      nvidia.com/gpu.deploy.dra-plugin-gpu: "true"
+    tolerations: []
+    affinity: {}
+    kubeletRegistrarDirectoryPath: /var/lib/kubelet/plugins_registry
+    kubeletPluginsDirectoryPath: /var/lib/kubelet/plugins
+    containers:
+      plugin:
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "100Mi"
+          limits:
+            cpu: "200m"
+            memory: "200Mi"
+        healthcheckPort: 51515
+        livenessProbe:
+          service: liveness
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+  imagePullSecrets: []
+
+ubuntu:
+  image:
+    repository: {{ .Values | get "__REGISTRY__" "docker.io" }}/ubuntu
+    tag: "24.04"
+
+topology:
+  # nodePools is a map of node pool name to node pool configuration.
+  # Nodes are assigned to node pools based on the node pool label's value (key is configurable via nodePoolLabelKey).
+  # 
+  # For example, nodes that have the label "run.ai/simulated-gpu-node-pool: default"
+  # will be assigned to the "default" node pool.
+  nodePools:
+    default:
+      gpuProduct: H200-SXM
+      gpuCount: 8
+      gpuMemory: 141312
+    rtx3090:
+      gpuProduct: RTX-3090
+      gpuCount: 8
+      gpuMemory: 24576     # 24GB
+    rtx4090:
+      gpuProduct: RTX-4090
+      gpuCount: 8
+      gpuMemory: 24576     # 24GB
+    a100:
+      gpuProduct: A100-SXM4-80GB
+      gpuCount: 8
+      gpuMemory: 81920     # 80GB
+    a800:
+      gpuProduct: A800-SXM
+      gpuCount: 8
+      gpuMemory: 81920     # 80GB
+    h20:
+      gpuProduct: H20-SXM
+      gpuCount: 8
+      gpuMemory: 98304  
+  nodePoolLabelKey: run.ai/simulated-gpu-node-pool
+  migStrategy: mixed

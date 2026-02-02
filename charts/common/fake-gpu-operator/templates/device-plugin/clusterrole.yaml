@@ -1,0 +1,19 @@
+{{- if .Values.devicePlugin.enabled -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fake-device-plugin
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+{{- end -}}
