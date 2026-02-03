@@ -1,0 +1,38 @@
+image:
+  registry: {{ .Values | get "__REGISTRY__" "docker.io" }}
+  repository: kafbat/kafka-ui
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: v1.4.2
+
+ingress:
+  enabled: true
+  ingressClassName: ""
+  path: "/"
+  pathType: "Prefix"
+  host: kafka-ui.{{ .Values.__DOMAIN__ }}
+
+nodeSelector: {}
+
+probes:
+  useHttpsScheme: false
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 10
+  readiness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 10
+
+yamlApplicationConfig:
+  kafka:
+    clusters:
+      - name: internal
+        bootstrapServers: "kafka-broker-0.kafka-broker-headless.kafka:9092,kafka-broker-1.kafka-broker-headless.kafka:9092,kafka-broker-2.kafka-broker-headless.kafka:9092"
+  auth:
+    type: disabled
+  management:
+    health:
+      ldap:
+        enabled: false
