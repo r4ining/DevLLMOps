@@ -1,8 +1,16 @@
 # 命令行切换多个k8s集群(zsh版本)
 
+# git
+alias gs='git status'
+alias ga='git add .'
+alias gm='git commit -m'
+alias gp='git push'
+
 alias k='kubectl'
 alias kc='kubecolor'
 
+autoload -Uz compinit
+compinit
 source <(kubectl completion zsh)
 
 compdef k=kubectl

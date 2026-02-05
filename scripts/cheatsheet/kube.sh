@@ -15,7 +15,7 @@ complete -F __start_kubectl kubecolor
 
 # 设置语言，避免 k9s 边框问题
 export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+# export LC_ALL=en_US.UTF-8
 
 # add kubeconfig
 function add-kube() {
