@@ -1,0 +1,287 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8m
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: k8m
+  name: k8m
+  namespace: k8m
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: k8m
+  name: k8m
+  namespace: k8m
+rules:
+  - verbs:
+      - "*"
+    apiGroups:
+      - "*"
+    resources:
+      - "*"
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: k8m
+  name: k8m
+rules:
+  - verbs:
+      - "*"
+    apiGroups:
+      - "*"
+    resources:
+      - "*"
+  - verbs:
+      - "*"
+    nonResourceURLs:
+      - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: k8m
+  name: k8m
+  namespace: k8m
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8m
+subjects:
+  - kind: ServiceAccount
+    name: k8m
+    namespace: k8m
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8m
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8m
+subjects:
+  - kind: ServiceAccount
+    name: k8m
+    namespace: k8m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8m
+  namespace: k8m
+  labels:
+    app: k8m
+spec:
+  ports:
+    - name: http-k8m
+      protocol: TCP
+      port: 3618
+      targetPort: 3618
+  selector:
+    app: k8m
+    #k8m.io/role: leader #启用主备选举插件必须填,否则不会切换。单实例不要加，加了不能正常访问。
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8m-nodeport
+  namespace: k8m
+  labels:
+    app: k8m
+spec:
+  ports:
+    - name: http-k8m
+      protocol: TCP
+      port: 3618
+      targetPort: 3618
+      nodePort: 31999
+  selector:
+    app: k8m
+    #k8m.io/role: leader #启用主备选举插件必须填,否则不会切换。单实例不要加，加了不能正常访问。
+  type: NodePort
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: k8m-pvc
+  namespace: k8m
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# kubectl create secret generic admin-passwd-secret --from-literal=username=admin --from-literal=password=admin888 -n k8m
+apiVersion: v1
+data:
+  password: YWRtaW44ODg=
+  username: YWRtaW4=
+kind: Secret
+metadata:
+  name: admin-passwd-secret
+  namespace: k8m
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8m
+  namespace: k8m
+  labels:
+    app: k8m
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8m
+  template:
+    metadata:
+      labels:
+        app: k8m
+    spec:
+      containers:
+        - name: k8m
+          # image: docker.io/weibh/k8m:v0.26.16
+          # image: ghcr.io/weibaohui/k8m:v0.26.16
+          image: registry.cn-hangzhou.aliyuncs.com/minik8m/k8m:v0.26.16
+          env:
+            - name: POD_NAME #启用主备选举插件必须填,否则不会切换，单实例运行可以加不影响。
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE #启用主备选举插件必须填,否则不会切换，单实例运行可以加不影响。
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP #启用主备选举插件必须填,否则不会切换，单实例运行可以加不影响。
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # 是否开启debug模式
+            - name: DEBUG
+              value: "false"
+            # log输出日志级别，同klog用法
+            - name: LOG_V
+              value: "2"
+            # 监听的端口号
+            - name: PORT
+              value: "3618"
+            # kubeconfig文件路径，会自动扫描识别同级目录下所有的配置文件
+            - name: KUBECONFIG
+              value: "~/.kube/config"
+            # 开启AI功能，默认开启
+            - name: ENABLE_AI
+              value: "true"
+            - name: ENABLE_TEMP_ADMIN
+              value: "true"
+            # 管理员用户名
+            - name: ADMIN_USERNAME
+              value: "admin"
+            # 管理员密码
+            - name: ADMIN_PASSWORD
+              value: "admin888"
+            # # 是否启用临时管理员账户配置，默认关闭
+            # - name: ENABLE_TEMP_ADMIN
+            #   value: "true"
+            # # 管理员用户名
+            # - name: ADMIN_USERNAME
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: admin-passwd-secret
+            #       key: username
+            # # 管理员密码
+            # - name: ADMIN_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: admin-passwd-secret
+            #       key: password
+            # kubectl shell镜像地址
+            - name: KUBECTL_SHELL_IMAGE
+              value: "swr.cn-east-3.myhuaweicloud.com/r4in/bitnami/kubectl:latest"
+            # Node shell镜像地址
+            - name: NODE_SHELL_IMAGE
+              value: "swr.cn-east-3.myhuaweicloud.com/r4in/alpine:latest"
+            # 持久化数据库地址
+            - name: SQLITE_PATH
+              value: "/app/data/k8m.db"
+            # 启动程序后，是否自动连接发现的集群，默认关闭
+            - name: CONNECT_CLUSTER
+              value: "false"
+            # 是否自动注册纳管宿主集群，默认启用
+            - name: IN_CLUSTER
+              value: "true"
+            # 是否打印配置信息
+            - name: PRINT_CONFIG
+              value: "false"
+            # MySQL数据库配置（如需启用请取消注释并配置）
+            # - name: DB_DRIVER
+            #   value: "mysql"
+            # - name: MYSQL_HOST
+            #   value: "127.0.0.1"
+            # - name: MYSQL_PORT
+            #   value: "3306"
+            # - name: MYSQL_USER
+            #   value: "root"
+            # - name: MYSQL_PASSWORD
+            #   value: "root"
+            # - name: MYSQL_DATABASE
+            #   value: "k8m"
+            # - name: MYSQL_CHARSET
+            #   value: "utf8mb4"
+            # - name: MYSQL_COLLATION
+            #   value: "utf8mb4_general_ci"
+            # - name: MYSQL_QUERY
+            #   value: "parseTime=True&loc=Local"
+            # - name: MYSQL_LOGMODE
+            #   value: "false"
+            # PostgreSQL数据库配置（如需启用请取消注释并配置）
+            # - name: DB_DRIVER
+            #   value: "postgresql"
+            # - name: PG_HOST
+            #   value: "127.0.0.1"
+            # - name: PG_PORT
+            #   value: "5432"
+            # - name: PG_USER
+            #   value: "postgres"
+            # - name: PG_PASSWORD
+            #   value: "postgres"
+            # - name: PG_DATABASE
+            #   value: "k8m"
+            # - name: PG_SSLMODE
+            #   value: "disable"
+            # - name: PG_TIMEZONE
+            #   value: "Asia/Shanghai"
+            # - name: PG_LOGMODE
+            #   value: "false"
+          ports:
+            - containerPort: 3618
+              protocol: TCP
+              name: http-k8m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3618
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: k8m-data
+              mountPath: /app/data
+      restartPolicy: Always
+      serviceAccountName: k8m
+      volumes:
+        - name: k8m-data
+          persistentVolumeClaim:
+            claimName: k8m-pvc
