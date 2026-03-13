@@ -1,0 +1,14 @@
+# Note: Adjust the instanceSelector to match your Grafana instance's labels
+# You can check with: kubectl get grafana -o yaml
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: vllm-performance-dashboard
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana  # Adjust to match your Grafana instance labels
+  folder: "LLM Monitor"
+  json: |
+    # Replace this comment with the complete JSON content from
+    # performance_statistics.json - The JSON should start with { and end with }
