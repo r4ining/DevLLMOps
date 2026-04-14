@@ -1,0 +1,123 @@
+# ===== 模型启动配置 =====
+
+# 远程执行（可选，不配置则本地执行）
+# 配置后 container_cmd / stop_cmd 均通过 SSH 在远程服务器执行，支持多跳
+# 顶层配置作为所有 engine 的默认值，engine 内可单独覆盖
+# ssh_cmd: "sshpass -p xxx ssh -o StrictHostKeyChecking=no -J root@10.10.249.214:22,ubuntu@10.1.5.1 ubuntu@10.1.5.153"
+ssh_cmd: "sshpass -p xxx ssh -o StrictHostKeyChecking=no ubuntu@10.1.5.153"
+
+# Excel 中不记录的模型参数（全局默认，与 engine 级 exclude_params 合并取并集）
+exclude_params:
+  - model-path
+  - host
+  - port
+  - served-model-name
+  - m
+  - model
+
+# 多推理引擎配置，按顺序串行执行
+# 每个 engine 包含: engine(名称)、container_cmd、stop_cmd、commands
+engines:
+  - engine: "vLLM"
+    # 引擎级排除参数（与全局 exclude_params 合并）
+    exclude_params:
+      - trust-remote-code
+      - enable-auto-tool-choice
+      - tool-call-parser
+      - reasoning-parser
+    container_cmd: |
+      sudo docker run -itd --name model-test \
+          -v /data/model:/data/model \
+          -v /model:/model \
+          -e TZ=Asia/Shanghai \
+          --ipc=host \
+          --network host \
+          --shm-size 50G \
+          --gpus all \
+          --restart unless-stopped \
+          --entrypoint /bin/bash \
+          registry.sy.com/vllm/vllm-openai:v0.18.0-cu130
+    stop_cmd: |
+      sudo docker stop model-test && sudo docker rm -f model-test
+    commands:
+      - cmd: |
+          vllm serve /data/model/MiniMax-M2.5 \
+              --tensor-parallel-size 4 \
+              --tool-call-parser minimax_m2 \
+              --reasoning-parser minimax_m2_append_think \
+              --enable-auto-tool-choice \
+              --served-model-name minimax-m2.5 \
+              --trust-remote-code \
+              --host 0.0.0.0 \
+              --port 30000
+      - cmd: |
+          vllm serve /data/model/MiniMax-M2.5 \
+              --tensor-parallel-size 8 \
+              --tool-call-parser minimax_m2 \
+              --reasoning-parser minimax_m2_append_think \
+              --enable-auto-tool-choice \
+              --served-model-name minimax-m2.5 \
+              --trust-remote-code \
+              --host 0.0.0.0 \
+              --port 30000
+
+  - engine: "SGLang"
+    # 引擎级排除参数（与全局 exclude_params 合并）
+    exclude_params:
+      - trust-remote-code
+      - tool-call-parser
+      - reasoning-parser
+      # - attention-backend
+    container_cmd: |
+      sudo docker run -itd --name model-test \
+          -v /model:/model \
+          -v /data/model:/data/model \
+          --ipc=host \
+          --network host \
+          --shm-size 500G \
+          --gpus all \
+          -e TZ=Asia/Shanghai \
+          --restart unless-stopped \
+          registry.sy.com/lmsysorg/sglang:v0.5.9-cu130-runtime
+    stop_cmd: |
+      sudo docker stop model-test && sudo docker rm -f model-test
+    commands:
+      - cmd: |
+          python -m sglang.launch_server \
+              --model-path /data/model/MiniMax-M2.5 \
+              --tp-size 4 \
+              --ep-size 4 \
+              --tool-call-parser minimax-m2 \
+              --served-model-name minimax-m2.5 \
+              --reasoning-parser minimax-append-think \
+              --mem-fraction-static 0.85 \
+              --trust-remote-code \
+              --host 0.0.0.0 \
+              --port 30000
+      - cmd: |
+          python -m sglang.launch_server \
+              --model-path /data/model/MiniMax-M2.5 \
+              --tp-size 4 \
+              --ep-size 4 \
+              --tool-call-parser minimax-m2 \
+              --served-model-name minimax-m2.5 \
+              --reasoning-parser minimax-append-think \
+              --trust-remote-code \
+              --chunked-prefill-size 8192 \
+              --max-prefill-tokens 16384 \
+              --kv-cache-dtype fp8_e4m3 \
+              --host 0.0.0.0 \
+              --port 30000
+      - cmd: |
+          python -m sglang.launch_server \
+              --model-path /data/model/MiniMax-M2.5 \
+              --tp-size 4 \
+              --ep-size 4 \
+              --tool-call-parser minimax-m2 \
+              --served-model-name minimax-m2.5 \
+              --reasoning-parser minimax-append-think \
+              --mem-fraction-static 0.85 \
+              --trust-remote-code \
+              --attention-backend flashinfer \
+              --host 0.0.0.0 \
+              --port 30000

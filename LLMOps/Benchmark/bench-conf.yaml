@@ -1,0 +1,98 @@
+# ===== 压测配置 =====
+
+# 测试模式: 1=固定测试case, 2=SLO最大并发探测
+mode: 2
+
+# 纯测试模式: true=跳过模型启停和健康检查，直接对已有服务压测
+bench_only: false
+# bench_only 模式下是否先做健康检查（仅 bench_only=true 时生效）
+bench_only_healthcheck: false
+
+# 模型信息
+model_name: "minimax-m2.5"
+# tokenizer_path: "ZhipuAI/GLM-5"
+tokenizer_path: "/data/model/MiniMax-M2.5"
+url: "http://10.1.5.153:30000/v1/chat/completions"
+api_key: ""
+dataset: "random"
+
+# 输出配置
+result_dir: "./results"
+excel_prefix: ""   # 可选，自定义 Excel 文件名前缀，可为空
+
+
+# 健康检查
+healthcheck:
+  # 默认总计等待52分钟
+  initial_delay: 120
+  interval: 10
+  retry_count: 300
+
+# 预热
+warmup:
+  enable: true
+  context: (128, 128)     # (输入token数, 输出token数)
+  parallel: 5               # 并发数
+  number: 10                # 请求数
+
+# ===== 模式1: 固定测试case =====
+test_cases:
+  # 用例组合方式: 1=context与batch_request交叉组合, 2=一一对应(长度需一致)
+  combination_mode: 1
+  # 上下文长度: (输入长度, 输出长度)
+  context:
+    - (512, 256)
+    - (512, 512)
+    # - (1024, 1024)
+    # - (1024, 8192)
+    # - (8192, 1024)
+  # (并发数, 请求数)
+  batch_request:
+    - (1, 5)
+    - (2, 10)
+    - (4, 20)
+    # - (8, 40)
+    # - (16, 80)
+    # - (32, 160)
+    # - (64, 320)
+    # - (128, 640)
+
+# ===== 模式2: SLO最大并发探测 =====
+slo:
+  # 准则 (支持 s、ms 单位，或直接填数字代表秒)
+  criteria:
+    ttft: 0.2s
+    tpot: 0.05s
+  # 搜索方法: binary(二分) 或 stopN(步进+二分收敛)
+  # search_method: binary
+  search_method: stopN
+  stop_n: 2
+  # 初始并发数（可在 context 中单独覆盖）
+  init_concurrent: 3
+  # 最大并发数限制（可选，可在 context 中单独覆盖）
+  # 搜索过程中并发数不会超过此值，防止异常导致无限增长
+  # max_concurrent: 1024
+  # 请求数 = 并发数 * request_multiplier
+  request_multiplier: 4
+  # 上下文长度（支持单独配置 init_concurrent 和 override_args / engine_override_args）
+  # override_args 仅在 bench_only: false 时生效，用于针对特定上下文覆盖模型启动参数
+  #   "--key value"   → 添加或覆盖带值参数
+  #   "--flag"        → 添加或覆盖布尔标志
+  #   "!--key"        → 删除参数
+  # override_args: 通用覆盖，作用于所有引擎
+  # engine_override_args: 按引擎名分别覆盖（与 override_args 合并，引擎专属追加在通用之后）
+  context:
+    - context: (4096, 1024)
+      init_concurrent: 2
+    # - context: (1024, 1024)
+    #   init_concurrent: 2
+    #   override_args:                # 通用覆盖（所有引擎生效）
+    #     - --dp-size 1
+    #   engine_override_args:         # 按引擎名覆盖
+    #     vLLM:
+    #       - --chunked-prefill-size 1024
+    #     SGLang:
+    #       - --chunked-prefill-size 8192
+    #       - "!--enable-mixed-chunk"
+    # - context: (8192, 1024)
+    #   init_concurrent: 1
