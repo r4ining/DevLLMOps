@@ -147,11 +147,11 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P99",
+          "legendFormat": "P99 - {{instance}}",
           "range": true,
           "refId": "A",
           "useBackend": false
@@ -163,12 +163,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.9, sum by (le, instance) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P90",
+          "legendFormat": "P90 - {{instance}}",
           "range": true,
           "refId": "B",
           "useBackend": false
@@ -180,12 +180,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.5, sum by (le, instance) (rate(sglang_e2e_request_latency_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P50",
+          "legendFormat": "P50 - {{instance}}",
           "range": true,
           "refId": "C",
           "useBackend": false
@@ -197,12 +197,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "avg(rate(sglang_e2e_request_latency_seconds_sum{instance=~\"$instance\"}[$__rate_interval]) /  rate(sglang_e2e_request_latency_seconds_count{instance=~\"$instance\"}[$__rate_interval]))\r\n",
+          "expr": "sum by (instance) (rate(sglang_e2e_request_latency_seconds_sum{instance=~\"$instance\"}[$__rate_interval])) / sum by (instance) (rate(sglang_e2e_request_latency_seconds_count{instance=~\"$instance\"}[$__rate_interval]))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "Avg",
+          "legendFormat": "Avg - {{instance}}",
           "range": true,
           "refId": "D",
           "useBackend": false
@@ -394,11 +394,11 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P99",
+          "legendFormat": "P99 - {{instance}}",
           "range": true,
           "refId": "A",
           "useBackend": false
@@ -410,12 +410,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.9, sum by (le, instance) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P90",
+          "legendFormat": "P90 - {{instance}}",
           "range": true,
           "refId": "B",
           "useBackend": false
@@ -427,12 +427,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
+          "expr": "histogram_quantile(0.5, sum by (le, instance) (rate(sglang_time_to_first_token_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "P50",
+          "legendFormat": "P50 - {{instance}}",
           "range": true,
           "refId": "C",
           "useBackend": false
@@ -444,12 +444,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "avg(rate(sglang_time_to_first_token_seconds_sum{instance=~\"$instance\"}[$__rate_interval]) /  rate(sglang_time_to_first_token_seconds_count{instance=~\"$instance\"}[$__rate_interval]))\r\n",
+          "expr": "sum by (instance) (rate(sglang_time_to_first_token_seconds_sum{instance=~\"$instance\"}[$__rate_interval])) / sum by (instance) (rate(sglang_time_to_first_token_seconds_count{instance=~\"$instance\"}[$__rate_interval]))\r\n",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "Avg",
+          "legendFormat": "Avg - {{instance}}",
           "range": true,
           "refId": "D",
           "useBackend": false
@@ -1051,9 +1051,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang_prompt_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum by (instance) (rate(sglang_prompt_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
           "instant": false,
-          "legendFormat": "Prefill Tokens/s",
+          "legendFormat": "Prefill - {{instance}}",
           "range": true,
           "refId": "A"
         },
@@ -1063,10 +1063,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(sglang_generation_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum by (instance) (rate(sglang_generation_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Decode Tokens/s",
+          "legendFormat": "Decode - {{instance}}",
           "range": true,
           "refId": "B"
         }
@@ -1163,9 +1163,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (mode) (rate(sglang_realtime_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum by (mode, instance) (rate(sglang_realtime_tokens_total{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
           "instant": false,
-          "legendFormat": "{{mode}}",
+          "legendFormat": "{{mode}} - {{instance}}",
           "range": true,
           "refId": "A"
         }
@@ -1262,9 +1262,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "instant": false,
-          "legendFormat": "P99",
+          "legendFormat": "P99 - {{instance}}",
           "range": true,
           "refId": "A"
         },
@@ -1274,10 +1274,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.9, sum by (le, instance) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "P90",
+          "legendFormat": "P90 - {{instance}}",
           "range": true,
           "refId": "B"
         },
@@ -1287,10 +1287,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le, instance) (rate(sglang_inter_token_latency_seconds_bucket{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "P50",
+          "legendFormat": "P50 - {{instance}}",
           "range": true,
           "refId": "C"
         },
@@ -1300,10 +1300,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(sglang_inter_token_latency_seconds_sum{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]) / rate(sglang_inter_token_latency_seconds_count{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum by (instance) (rate(sglang_inter_token_latency_seconds_sum{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval])) / sum by (instance) (rate(sglang_inter_token_latency_seconds_count{instance=~\"$instance\", model_name=~\"$model_name\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Avg",
+          "legendFormat": "Avg - {{instance}}",
           "range": true,
           "refId": "D"
         }
@@ -1490,9 +1490,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "instant": false,
-          "legendFormat": "P99",
+          "legendFormat": "P99 - {{instance}}",
           "range": true,
           "refId": "A"
         },
@@ -1502,10 +1502,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.9, sum by (le, instance) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "P90",
+          "legendFormat": "P90 - {{instance}}",
           "range": true,
           "refId": "B"
         },
@@ -1515,10 +1515,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le, instance) (rate(sglang_per_stage_req_latency_seconds_bucket{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "P50",
+          "legendFormat": "P50 - {{instance}}",
           "range": true,
           "refId": "C"
         },
@@ -1528,10 +1528,10 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(sglang_per_stage_req_latency_seconds_sum{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval]) / rate(sglang_per_stage_req_latency_seconds_count{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval]))",
+          "expr": "sum by (instance) (rate(sglang_per_stage_req_latency_seconds_sum{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval])) / sum by (instance) (rate(sglang_per_stage_req_latency_seconds_count{instance=~\"$instance\", stage=\"prefill_waiting\", model_name=~\"$model_name\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Avg",
+          "legendFormat": "Avg - {{instance}}",
           "range": true,
           "refId": "D"
         }
@@ -1636,13 +1636,15 @@
   "templating": {
     "list": [
       {
-        "current": {},
-        "label": "datasource",
         "name": "DS_PROMETHEUS",
-        "options": [],
+        "type": "datasource",
+        "label": "datasource",
         "query": "prometheus",
         "refresh": 1,
-        "type": "datasource"
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        }
       },
       {
         "current": {},
@@ -1650,18 +1652,19 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(sglang_utilization,instance)",
-        "includeAll": false,
-        "label": "SGLang实例",
-        "name": "instance",
+        "definition": "label_values(sglang_prompt_tokens_total,model_name)",
+        "includeAll": true,
+        "label": "SGLang模型",
+        "multi": true,
+        "name": "model_name",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(sglang_utilization,instance)",
+          "query": "label_values(sglang_prompt_tokens_total,model_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
-        "regex": "/^[a-zA-Z]/",
+        "regex": "",
         "type": "query"
       },
       {
@@ -1670,18 +1673,19 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values({instance=\"$instance\"},model_name)",
-        "includeAll": false,
-        "label": "SGLang模型",
-        "name": "model_name",
+        "definition": "label_values(sglang_prompt_tokens_total{model_name=~\"$model_name\"},instance)",
+        "includeAll": true,
+        "label": "SGLang实例",
+        "multi": true,
+        "name": "instance",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({instance=\"$instance\"},model_name)",
+          "query": "label_values(sglang_prompt_tokens_total{model_name=~\"$model_name\"},instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
-        "regex": "",
+        "regex": "/^[a-zA-Z]/",
         "type": "query"
       }
     ]

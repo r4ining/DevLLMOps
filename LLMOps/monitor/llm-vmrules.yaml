@@ -1,0 +1,113 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  labels:
+    project: sy-base
+  name: llm
+  namespace: monitor
+spec:
+  groups:
+    # ========================
+    # 通用 - 服务可用性
+    # ========================
+    - name: llm-availability
+      rules:
+        - alert: LLMServiceDown
+          expr: up{job="llm"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "LLM 推理服务宕机"
+            description: "实例 {{ $labels.instance }} 已停止响应超过 1 分钟。"
+
+    # ========================
+    # vLLM 引擎告警
+    # ========================
+    # - name: llm-vllm
+    #   rules:
+    #     - alert: VLLMHighRequestWaiting
+    #       expr: vllm:num_requests_waiting{job="llm"} > 10
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "vLLM 等待队列请求过多"
+    #         description: "实例 {{ $labels.instance }} 当前有 {{ $value }} 个请求在等待队列中排队，已持续 5 分钟。"
+
+    #     - alert: VLLMGPUCacheUsageHigh
+    #       expr: vllm:gpu_cache_usage_perc{job="llm"} > 0.9
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "vLLM GPU KV Cache 使用率过高"
+    #         description: "实例 {{ $labels.instance }} 的 GPU KV Cache 使用率为 {{ $value | humanizePercentage }}，已持续 5 分钟。"
+
+    #     - alert: VLLMGPUCacheExhausted
+    #       expr: vllm:gpu_cache_usage_perc{job="llm"} > 0.99
+    #       for: 2m
+    #       labels:
+    #         severity: critical
+    #       annotations:
+    #         summary: "vLLM GPU KV Cache 即将耗尽"
+    #         description: "实例 {{ $labels.instance }} 的 GPU KV Cache 使用率为 {{ $value | humanizePercentage }}，即将耗尽，可能导致请求被拒绝或抢占。"
+
+    #     - alert: VLLMHighTimeToFirstToken
+    #       expr: histogram_quantile(0.95, sum by (le, instance) (rate(vllm:time_to_first_token_seconds_bucket{job="llm"}[5m]))) > 10
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "vLLM 首 Token 延迟过高"
+    #         description: "实例 {{ $labels.instance }} 的 P95 首 Token 延迟为 {{ $value | humanizeDuration }}，超过 10 秒阈值。"
+
+    #     - alert: VLLMHighE2ELatency
+    #       expr: histogram_quantile(0.95, sum by (le, instance) (rate(vllm:e2e_request_latency_seconds_bucket{job="llm"}[5m]))) > 60
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "vLLM 端到端请求延迟过高"
+    #         description: "实例 {{ $labels.instance }} 的 P95 端到端请求延迟为 {{ $value | humanizeDuration }}，超过 60 秒阈值。"
+
+    # ========================
+    # SGLang 引擎告警
+    # ========================
+    # - name: llm-sglang
+    #   rules:
+    #     - alert: SGLangHighRequestQueue
+    #       expr: sglang:num_queue_reqs{job="llm"} > 10
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "SGLang 等待队列请求过多"
+    #         description: "实例 {{ $labels.instance }} 当前有 {{ $value }} 个请求在等待队列中排队，已持续 5 分钟。"
+
+    #     - alert: SGLangKVCacheUsageHigh
+    #       expr: sglang:token_usage{job="llm"} > 0.9
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "SGLang KV Cache 使用率过高"
+    #         description: "实例 {{ $labels.instance }} 的 KV Cache 使用率为 {{ $value | humanizePercentage }}，已持续 5 分钟。"
+
+    #     - alert: SGLangHighTimeToFirstToken
+    #       expr: histogram_quantile(0.95, sum by (le, instance) (rate(sglang:time_to_first_token_seconds_bucket{job="llm"}[5m]))) > 10
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "SGLang 首 Token 延迟过高"
+    #         description: "实例 {{ $labels.instance }} 的 P95 首 Token 延迟为 {{ $value | humanizeDuration }}，超过 10 秒阈值。"
+
+    #     - alert: SGLangHighE2ELatency
+    #       expr: histogram_quantile(0.95, sum by (le, instance) (rate(sglang:e2e_request_latency_seconds_bucket{job="llm"}[5m]))) > 60
+    #       for: 5m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "SGLang 端到端请求延迟过高"
+    #         description: "实例 {{ $labels.instance }} 的 P95 端到端请求延迟为 {{ $value | humanizeDuration }}，超过 60 秒阈值。"

@@ -6,6 +6,7 @@ level as siblings of the row panel, with "collapsed": false.
 """
 import json
 import copy
+import re
 
 
 def load_json(path):
@@ -83,8 +84,55 @@ def make_expanded_row(title, child_panels, row_y, row_id, id_start):
     return row, children, next_id, max_y
 
 
+def rewrite_variable_refs(text, rename_map):
+    if not isinstance(text, str):
+        return text
+    out = text
+    for old, new in rename_map.items():
+        out = re.sub(r"\$\{" + re.escape(old) + r"\}", "${" + new + "}", out)
+        out = re.sub(r"\$" + re.escape(old) + r"(?![A-Za-z0-9_])", "$" + new, out)
+    return out
+
+
+def rewrite_in_place(obj, rename_map):
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(value, str):
+                obj[key] = rewrite_variable_refs(value, rename_map)
+            else:
+                rewrite_in_place(value, rename_map)
+    elif isinstance(obj, list):
+        for i, value in enumerate(obj):
+            if isinstance(value, str):
+                obj[i] = rewrite_variable_refs(value, rename_map)
+            else:
+                rewrite_in_place(value, rename_map)
+
+
+def namespace_dashboard_vars(dashboard, prefix, target_names):
+    templating = dashboard.get("templating", {}).get("list", [])
+    rename_map = {}
+    for var in templating:
+        name = var.get("name")
+        if name in target_names:
+            rename_map[name] = f"{prefix}_{name}"
+
+    if not rename_map:
+        return dashboard
+
+    rewrite_in_place(dashboard.get("panels", []), rename_map)
+    rewrite_in_place(templating, rename_map)
+
+    for var in templating:
+        name = var.get("name")
+        if name in rename_map:
+            var["name"] = rename_map[name]
+
+    return dashboard
+
+
 def merge_template_vars(all_vars_lists):
-    """Merge template variable lists, deduplicating by name and renaming display labes."""
+    """Merge template variable lists, deduplicating by variable name."""
     seen = {}
     merged = []
     for var_list in all_vars_lists:
@@ -92,30 +140,18 @@ def merge_template_vars(all_vars_lists):
             name = v.get("name", "")
             if name not in seen:
                 seen[name] = True
-                
-                # === Enhance Labels to avoid confusion ===
-                if name == "instance":
-                    v["label"] = "SGLang实例"
-                elif name == "model_name":
-                    v["label"] = "SGLang模型"
-                elif name == "Deployment_id":
-                    v["label"] = "vLLM 模型"
-                elif name == "agg_method":
-                    v["label"] = "vLLM聚合方式"
-                elif name in ["rush_hours", "rush_hours_type"]:
-                    if "label" in v:
-                        v["label"] = "vLLM " + v["label"]
-                    else:
-                        v["label"] = "vLLM " + name
-
                 merged.append(v)
     return merged
 
 
 def main():
-    sglang = load_json("sglang.json")
+    sglang = load_json("sglang-dashboard-grafana.json")
     vllm_perf = load_json("vllm-performance_statistics.json")
     vllm_query = load_json("vllm-query_statistics.json")
+
+    namespace_dashboard_vars(sglang, "sgl", {"model_name", "instance"})
+    namespace_dashboard_vars(vllm_perf, "vllm", {"model_name", "instance"})
+    namespace_dashboard_vars(vllm_query, "vllm", {"model_name", "instance"})
 
     all_panels = []
     next_id = 1
@@ -203,7 +239,7 @@ def main():
         "weekStart": ""
     }
 
-    with open("llm-all.json", "w") as f:
+    with open("../llm-all.json", "w") as f:
         json.dump(merged, f, indent=2, ensure_ascii=False)
 
     # Summary

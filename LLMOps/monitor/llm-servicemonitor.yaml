@@ -12,15 +12,23 @@ spec:
       targetPort: 30000
       protocol: TCP
       name: metrics-30000
-#    - port: 30001
-#      targetPort: 30001
-#      protocol: TCP
-#      name: metrics-30001
+    - port: 30001
+      targetPort: 30001
+      protocol: TCP
+      name: metrics-30001
+    - port: 30002
+      targetPort: 30002
+      protocol: TCP
+      name: metrics-30002
+    - port: 30003
+      targetPort: 30003
+      protocol: TCP
+      name: metrics-30003
   clusterIP: None # 必须设置为 None，表示这是一个 Headless Service
   selector: {}
 
-
 ---
+
 # 定义 Endpoints，指定外部服务的地址
 apiVersion: v1
 kind: Endpoints
@@ -29,24 +37,18 @@ metadata:
   namespace: monitor
 subsets:
   - addresses:
-      - ip: 10.1.8.109
-      - ip: 10.1.8.110
-      - ip: 10.1.5.100
-      - ip: 10.1.5.151
-      - ip: 10.1.5.153
+      - ip: 10.1.1.10
     ports:
       - port: 30000
         name: metrics-30000
-# 非 30000 端口
-#  - addresses:
-#      - ip: 10.1.8.109
-#      - ip: 10.1.5.151
-#    ports:
-#      - name: metrics-30001
-#        port: 30001
-
+#   - addresses:
+#       - ip: 10.1.1.20
+#     ports:
+#       - name: metrics-30001
+#         port: 30001
 
 ---
+
 # 定义 ServiceMonitor，用于 Prometheus 监控
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -65,24 +67,18 @@ spec:
       path: /metrics
       relabelings:
         # 见名知意的 instance 标签：模型名_GPU型号_IP
+        # Qwen3-Coder-480B-A35B-Instruct
         - sourceLabels: [ __address__ ]
           targetLabel: instance
-          regex: "(10.1.8.109|10.1.8.110):.*"
-          replacement: "MiniMax-M2.5_GB200_$1"
+          regex: "(10.1.1.10):30000"
+          replacement: "Qwen3-Coder-480B-A35B-Instruct_GB300_$1"
+
         - sourceLabels: [ __address__ ]
-          targetLabel: instance
-          regex: "(10.1.5.100):.*"
-          replacement: "GLM-5_B200_$1"
+          targetLabel: llm_engine
+          regex: "(10.1.1.10|10.1.1.11):30000"
+          replacement: "vLLM"
         - sourceLabels: [ __address__ ]
-          targetLabel: instance
-          regex: "(10.1.5.151|10.1.5.153):.*"
-          replacement: "GLM-5_H200_$1"
-#    - port: metrics-30001
-#      interval: 20s
-#      path: /metrics
-#      relabelings:
-#        # 见名知意的 instance 标签：模型名_GPU型号_IP
-#        - sourceLabels: [ __address__ ]
-#          targetLabel: instance
-#          regex: "(10.1.8.109|10.1.8.110):.*"
-#          replacement: "MiniMax-M2.5_GB200_$1"
+          targetLabel: llm_engine
+          regex: "(10.1.1.13):30000"
+          replacement: "SGLang"
+
