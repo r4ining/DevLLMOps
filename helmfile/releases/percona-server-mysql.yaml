@@ -1,0 +1,16 @@
+bases:
+  - "../common/environments.yaml"
+---
+
+releases:
+  - name: "percona-mysql"
+    namespace: "percona-mysql"
+    chart: "../chart/percona-server-mysql"
+    labels:
+      app: "percona-mysql"
+    version: 1.1.0
+    installed: true
+    wait: true
+    skipDeps: true    
+    values:
+      - ../values/percona-server-mysql.yaml.gotmpl

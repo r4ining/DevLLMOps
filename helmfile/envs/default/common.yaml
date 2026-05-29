@@ -3,6 +3,19 @@ __REGISTRY__: "swr.cn-east-3.myhuaweicloud.com/r4in"
 # 域名，需要域名的场景（比如 Ingress 等）会使用该变量作为主域名，各个应用会有各自的子域名，比如: grafana.{{ __DOMAIN__ }}
 __DOMAIN__: "lab.com"
 
+# 中间件
+## Percona MySQL
+### Percona MySQL Operator 镜像 tag
+__PERCONA_SERVER_MYSQL_OPERATOR_IMAGE_TAG__: 1.1.0
+### Percona MySQL
+#### Percona MySQL 镜像 tag
+__PERCONA_SERVER_MYSQL_IMAGE_TAG__: 8.4.8-8.1
+__PERCONA_SERVER_MYSQL_ROOT_PASS__: th29OiINAk2Wf27BsV
+#### Percona MySQL 集群数量
+__PERCONA_SERVER_MYSQL_SIZE__: 3
+__PERCONA_SERVER_MYSQL_LIMITS_CPU__: 4
+__PERCONA_SERVER_MYSQL_LIMITS_MEMORY__: 16Gi
+__PERCONA_SERVER_MYSQL_DATA_SIZE__: 100Gi
 
 # Prometheus
 ## 是否创建 Ingress，将会为 kube-prometheus-stack 中的服务创建 Ingress

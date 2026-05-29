@@ -1,0 +1,16 @@
+bases:
+  - "../common/environments.yaml"
+---
+
+releases:
+  - name: "percona-mysql-operator"
+    namespace: "percona-mysql"
+    chart: "../chart/percona-server-mysql-operator"
+    labels:
+      app: "percona-mysql-operator"
+    version: 1.1.0
+    installed: true
+    wait: true
+    skipDeps: true    
+    values:
+      - ../values/percona-server-mysql-operator.yaml.gotmpl
