@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/common/argo-cd
+  version: 9.5.20
+  wait: true
+  installed: true
+  name: argo-cd
+  namespace: argocd
+  skipDeps: true
+  labels:
+    app: argo-cd
+  values:
+  - ../values/argo-cd.yaml.gotmpl

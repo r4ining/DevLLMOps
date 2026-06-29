@@ -3,3 +3,4 @@ bases:
 
 helmfiles:
   - ../releases/traefik.yaml
+  - ../releases/argo-cd.yaml

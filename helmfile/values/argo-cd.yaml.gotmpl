@@ -1,0 +1,153 @@
+global:
+  imageRegistry: {{ .Values | get "__REGISTRY__" "" }}
+  domain: argocd.{{ .Values.__DOMAIN__ }}
+  image:
+    # -- If defined, a repository applied to all Argo CD deployments
+    repository: quay.io/argoproj/argocd
+    # -- Overrides the global Argo CD image tag whose default is the chart appVersion
+    tag: ""
+  # -- Default node selector for all components
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # -- Default tolerations for all components
+  tolerations: []
+
+  # Default affinity preset for all components
+  affinity:
+    # -- Default pod anti-affinity rules. Either: `none`, `soft` or `hard`
+    podAntiAffinity: soft
+    # Node affinity rules
+    nodeAffinity:
+      # -- Default node affinity rules. Either: `none`, `soft` or `hard`
+      type: hard
+      # -- Default match expressions for node affinity
+      matchExpressions: []
+        # - key: topology.kubernetes.io/zone
+        #   operator: In
+        #   values:
+        #    - antarctica-east1
+        #    - antarctica-west1
+
+
+configs:
+  params:
+    server.insecure: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: ""
+    annotations: {}
+    hostname: argocd.{{ .Values.__DOMAIN__ }}
+    path: /
+    pathType: Prefix
+    tls: false
+
+# External Redis parameters
+externalRedis:
+  # -- External Redis server host
+  host: ""
+  # -- External Redis username
+  username: ""
+  # -- External Redis password
+  password: ""
+  # -- External Redis server port
+  port: 6379
+  # -- The name of an existing secret with Redis (must contain key `redis-password`. And should contain `redis-username` if username is not `default`) and Sentinel credentials.
+  # When it's set, the `externalRedis.username` and `externalRedis.password` parameters are ignored
+  existingSecret: ""
+  # -- External Redis Secret annotations
+  secretAnnotations: {}
+
+## Application controller image
+controller:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## Dex image
+dex:
+  image:
+    repository: ghcr.io/dexidp/dex
+    tag: v2.45.1
+    imagePullPolicy: ""
+  initImage:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## Redis image
+redis:
+  image:
+    repository: ecr-public.aws.com/docker/library/redis
+    tag: 8.2.3-alpine
+    imagePullPolicy: ""
+  exporter:
+    enabled: false
+    image:
+      repository: ghcr.io/oliver006/redis_exporter
+      tag: v1.86.0
+      imagePullPolicy: ""
+
+## Redis HA subchart images
+redis-ha:
+  image:
+    repository: ecr-public.aws.com/docker/library/redis
+    tag: 8.2.3-alpine
+  exporter:
+    enabled: false
+    image: ghcr.io/oliver006/redis_exporter
+    tag: v1.75.0
+  haproxy:
+    image:
+      repository: ecr-public.aws.com/docker/library/haproxy
+
+## Redis secret-init image
+redisSecretInit:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## Argo CD server image
+server:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+  extensions:
+    enabled: false
+    image:
+      repository: quay.io/argoprojlabs/argocd-extension-installer
+      tag: v1.0.0
+      imagePullPolicy: ""
+
+## Repo server image
+repoServer:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## ApplicationSet controller image
+applicationSet:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## Notifications controller image
+notifications:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
+
+## Commit server image
+commitServer:
+  image:
+    repository: ""
+    tag: ""
+    imagePullPolicy: ""
