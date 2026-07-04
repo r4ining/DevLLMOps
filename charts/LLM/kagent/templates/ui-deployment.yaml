@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kagent.fullname" . }}-ui
+  namespace: {{ include "kagent.namespace" . }}
+  labels:
+    {{- include "kagent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kagent.ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/ui-config: {{ include (print $.Template.BasePath "/ui-nginx-configmap.yaml") . | sha256sum }}
+        {{- with .Values.ui.podAnnotations | default .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "kagent.ui.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.Values.ui.podSecurityContext | default .Values.podSecurityContext) }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kagent.fullname" . }}-ui
+      volumes:
+        - name: nextjs-cache
+          emptyDir:
+            sizeLimit: {{ .Values.ui.volumes.nextjsCache }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.ui.volumes.tmp }}
+        - name: ui-config
+          configMap:
+            name: {{ include "kagent.fullname" . }}-ui-config
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          {{- with (.Values.ui.securityContext | default .Values.securityContext) }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.ui.image.registry | default .Values.registry  }}/{{ .Values.ui.image.repository }}:{{ coalesce .Values.tag .Values.ui.image.tag .Chart.Version }}"
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy | default .Values.imagePullPolicy }}
+          env:
+            - name: NEXT_PUBLIC_BACKEND_URL
+              value: {{ .Values.ui.publicBackendUrl | quote }}
+            - name: BACKEND_INTERNAL_URL
+              value: {{ .Values.ui.backendInternalUrl | default (include "kagent.controllerInternalHttpApiBase" .) | quote }}
+            {{- if .Values.ui.auth }}
+            - name: SSO_REDIRECT_PATH
+              value: {{ .Values.ui.auth.ssoRedirectPath | default "/oauth2/start" | quote }}
+            {{- end }}
+            {{- with .Values.ui.additionalForwardedHeaders }}
+            - name: KAGENT_ADDITIONAL_FORWARDED_HEADERS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.ui.env }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ui.service.ports.targetPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: nextjs-cache
+              mountPath: /app/ui/.next/cache
+            - name: tmp
+              mountPath: /tmp
+            - name: ui-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: ui-config
+              mountPath: /etc/supervisor/conf.d/supervisord.conf
+              subPath: supervisord.conf
+              readOnly: true
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+          {{- if .Values.ui.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.ui.startupProbe | nindent 12 }}
+          {{- else }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 1
+            initialDelaySeconds: 1
+          {{- end }}
+          {{- if .Values.ui.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.ui.readinessProbe | nindent 12 }}
+          {{- else }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+          {{- end }}

@@ -1,0 +1,5 @@
+apiVersion: v2
+description: MCP server for grafana
+name: grafana-mcp
+type: application
+version: 0.9.10

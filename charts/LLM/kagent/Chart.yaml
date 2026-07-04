@@ -1,0 +1,70 @@
+apiVersion: v2
+dependencies:
+- condition: kmcp.enabled
+  name: kmcp
+  repository: oci://ghcr.io/kagent-dev/kmcp/helm
+  version: 0.3.0
+- condition: substrate.enabled
+  name: substrate
+  repository: oci://ghcr.io/kagent-dev/substrate/helm
+  version: 0.0.6
+- condition: kagent-tools.enabled
+  name: kagent-tools
+  repository: oci://ghcr.io/kagent-dev/tools/helm
+  version: 0.2.1
+- condition: grafana-mcp.enabled, observability-agent.enabled
+  name: grafana-mcp
+  repository: file://../tools/grafana-mcp
+  version: 0.9.10
+- condition: querydoc.enabled
+  name: querydoc
+  repository: file://../tools/querydoc
+  version: 0.9.10
+- condition: k8s-agent.enabled
+  name: k8s-agent
+  repository: file://../agents/k8s
+  version: 0.9.10
+- condition: kgateway-agent.enabled
+  name: kgateway-agent
+  repository: file://../agents/kgateway
+  version: 0.9.10
+- condition: istio-agent.enabled
+  name: istio-agent
+  repository: file://../agents/istio
+  version: 0.9.10
+- condition: promql-agent.enabled
+  name: promql-agent
+  repository: file://../agents/promql
+  version: 0.9.10
+- condition: observability-agent.enabled
+  name: observability-agent
+  repository: file://../agents/observability
+  version: 0.9.10
+- condition: argo-rollouts-agent.enabled
+  name: argo-rollouts-agent
+  repository: file://../agents/argo-rollouts
+  version: 0.9.10
+- condition: helm-agent.enabled
+  name: helm-agent
+  repository: file://../agents/helm
+  version: 0.9.10
+- condition: cilium-policy-agent.enabled
+  name: cilium-policy-agent
+  repository: file://../agents/cilium-policy
+  version: 0.9.10
+- condition: cilium-manager-agent.enabled
+  name: cilium-manager-agent
+  repository: file://../agents/cilium-manager
+  version: 0.9.10
+- condition: cilium-debug-agent.enabled
+  name: cilium-debug-agent
+  repository: file://../agents/cilium-debug
+  version: 0.9.10
+- condition: oauth2-proxy.enabled
+  name: oauth2-proxy
+  repository: https://oauth2-proxy.github.io/manifests
+  version: ~7.0.0
+description: A Helm chart for kagent, built with Google ADK
+name: kagent
+type: application
+version: 0.9.10

@@ -1,0 +1,547 @@
+# Default values for kagent
+
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+
+# -- Enable IPv6/dual-stack support.
+ipv6:
+  enabled: false
+
+tag: ""
+registry: {{ .Values | get "__REGISTRY__" "" }}
+
+imagePullSecrets: []
+imagePullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespaceOverride: ""
+
+podAnnotations: {}
+
+labels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ==============================================================================
+# CORE KAGENT COMPONENTS
+# ==============================================================================
+
+tolerations: []
+
+nodeSelector: {}
+
+# ==============================================================================
+# DATABASE CONFIGURATION
+# ==============================================================================
+
+database:
+  postgres:
+    url: ""
+    urlFile: ""
+    vectorEnabled: false
+    bundled:
+      enabled: true
+      image:
+        registry: {{ .Values | get "__REGISTRY__" "" }}
+        repository: library
+        name: postgres
+        tag: "18.3-alpine"
+        pullPolicy: IfNotPresent
+      storage: 500Mi
+      storageClassName: ""
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      podSecurityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+
+# ==============================================================================
+# RBAC CONFIGURATION
+# ==============================================================================
+
+rbac:
+  namespaces: []
+
+# ==============================================================================
+# CONTROLLER CONFIGURATION
+# ==============================================================================
+
+controller:
+  replicas: 1
+  loglevel: "info"
+  auth:
+    mode: unsecure
+    userIdClaim: ""
+  agentDeployment:
+    serviceAccountName: ""
+    podLabels: {}
+    host: ""
+  a2aBaseUrl: ""
+  agentImage:
+    registry: {{ .Values | get "__REGISTRY__" "" }}
+    repository: kagent-dev/kagent/app
+    tag: ""
+    pullPolicy: ""
+  skillsInitImage:
+    registry: {{ .Values | get "__REGISTRY__" "" }}
+    repository: kagent-dev/kagent/skills-init
+    tag: ""
+    pullPolicy: ""
+  streaming: null
+  watchNamespaces: []
+  mcpEgressPlaintext: false
+  podAnnotations: {}
+  tolerations: []
+  nodeSelector: {}
+  image:
+    registry: {{ .Values | get "__REGISTRY__" "" }}
+    repository: kagent-dev/kagent/controller
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 2
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    ports:
+      port: 8083
+      targetPort: 8083
+  metrics:
+    enabled: false
+    bindAddress: ":8443"
+    secureServing: true
+    service:
+      type: ClusterIP
+      port: 8443
+  env: []
+  substrate:
+    enabled: false
+    ateApiEndpoint: ""
+    atenetRouterURL: ""
+    ateApiInsecure: false
+    ateApiTokenFile: /var/run/secrets/tokens/ate-api/token
+    ateApiTokenAudience: api.ate-system.svc
+    ateApiServer:
+      namespace: ate-system
+      serviceAccount: ate-api-server
+    defaultWorkerPool:
+      namespace: ""
+      name: ""
+  envFrom: []
+  volumes: []
+  volumeMounts: []
+  startupProbe: {}
+  readinessProbe: {}
+
+substrateWorkerPool:
+  create: false
+  name: kagent-default
+  replicas: 1
+  ateomImage: ""
+
+# ==============================================================================
+# UI CONFIGURATION
+# ==============================================================================
+
+ui:
+  replicas: 1
+  image:
+    registry: {{ .Values | get "__REGISTRY__" "" }}
+    repository: kagent-dev/kagent/ui
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    ports:
+      port: 8080
+      targetPort: 8080
+    annotations: {}
+  auth:
+    ssoRedirectPath: "/oauth2/start"
+  env: {}
+  additionalForwardedHeaders: []
+  publicBackendUrl: "/api"
+  backendInternalUrl: ""
+  podSecurityContext: {}
+  securityContext: {}
+  volumes:
+    nextjsCache: 100Mi
+    tmp: 50Mi
+  podAnnotations: {}
+  tolerations: []
+  nodeSelector: {}
+  startupProbe: {}
+  readinessProbe: {}
+  route:
+    enabled: true
+
+# ==============================================================================
+# LLM PROVIDERS CONFIGURATION
+# ==============================================================================
+
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    model: "gpt-4.1-mini"
+    apiKeySecretRef: kagent-openai
+    apiKeySecretKey: OPENAI_API_KEY
+  ollama:
+    provider: Ollama
+    model: "llama3.2"
+    config:
+      host: host.docker.internal:11434
+      options:
+        num_ctx: "64000"
+  anthropic:
+    provider: Anthropic
+    model: "claude-haiku-4-5"
+    apiKeySecretRef: kagent-anthropic
+    apiKeySecretKey: ANTHROPIC_API_KEY
+  azureOpenAI:
+    provider: AzureOpenAI
+    model: "gpt-4.1-mini"
+    apiKeySecretRef: kagent-azure-openai
+    apiKeySecretKey: AZUREOPENAI_API_KEY
+    config:
+      apiVersion: "2023-05-15"
+      azureAdToken: ""
+      azureDeployment: ""
+      azureEndpoint: ""
+  gemini:
+    provider: Gemini
+    model: "gemini-2.0-flash-lite"
+    apiKeySecretRef: kagent-gemini
+    apiKeySecretKey: GOOGLE_API_KEY
+
+# ==============================================================================
+# KMCP
+# ==============================================================================
+
+kmcp:
+  enabled: true
+  nameOverride: "kmcp"
+  fullnameOverride: ""
+  namespaceOverride: ""
+
+# ==============================================================================
+# SUBSTRATE
+# ==============================================================================
+
+substrate:
+  enabled: false
+
+# ==============================================================================
+# BUILT-IN TOOLS
+# ==============================================================================
+
+kagent-tools:
+  enabled: true
+  nameOverride: tools
+  replicaCount: 1
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  tools:
+    loglevel: "debug"
+    metrics:
+      port: 8085
+
+# ==============================================================================
+# PROXY CONFIGURATION
+# ==============================================================================
+
+proxy:
+  url: ""
+
+# ==============================================================================
+# AGENTS
+# ==============================================================================
+
+k8s-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+kgateway-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+istio-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+promql-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+observability-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+argo-rollouts-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+helm-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-policy-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-manager-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-debug-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# ==============================================================================
+# MCP TOOLS
+# ==============================================================================
+
+grafana-mcp:
+  enabled: true
+  grafana:
+    url: "grafana.kagent:3000/api"
+    serviceAccountToken: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+querydoc:
+  enabled: true
+  replicas: 1
+  image:
+    registry: {{ .Values | get "__REGISTRY__" "" }}
+    repository: kagent-dev/doc2vec/mcp
+    tag: 1.1.14
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  openai:
+    apiKey: ""
+
+# ==============================================================================
+# OAUTH2-PROXY CONFIGURATION (Optional)
+# ==============================================================================
+
+oauth2-proxy:
+  enabled: false
+  redis:
+    enabled: false
+  sessionStorage:
+    type: cookie
+  extraVolumes:
+    - name: custom-templates
+      configMap:
+        name: kagent-oauth2-proxy-templates
+  extraVolumeMounts:
+    - name: custom-templates
+      mountPath: /templates
+      readOnly: true
+  config:
+    existingSecret: ""
+    clientID: ""
+    clientSecret: ""
+    cookieSecret: ""
+  extraEnv:
+    - name: OIDC_ISSUER_URL
+      value: ""
+    - name: OIDC_REDIRECT_URL
+      value: ""
+    - name: UPSTREAM_URL
+      value: "http://kagent-ui:8080"
+  extraArgs:
+    provider: oidc
+    oidc-issuer-url: "$(OIDC_ISSUER_URL)"
+    redirect-url: "$(OIDC_REDIRECT_URL)"
+    upstream: "$(UPSTREAM_URL)"
+    email-domain: "*"
+    pass-authorization-header: true
+    set-authorization-header: true
+    approval-prompt: "auto"
+    scope: "openid profile email groups"
+    cookie-secure: true
+    cookie-samesite: "lax"
+    skip-jwt-bearer-tokens: true
+    skip-auth-route: "^/(health|login)$"
+    skip-auth-regex: "^/(login|_next/static|_next/image|login-bg\\.(jpg|png|webp)|logo-.*\\.png|favicon\\.ico|api/agentharnesses/.*/gateway).*$"
+    custom-templates-dir: "/templates"
+  service:
+    type: ClusterIP
+    portNumber: 4180
+
+# ==============================================================================
+# OBSERVABILITY
+# ==============================================================================
+
+otel:
+  tracing:
+    enabled: false
+    exporter:
+      otlp:
+        endpoint: ""
+        protocol: "grpc"
+        timeout: 15000
+        insecure: true
+  logging:
+    enabled: false
+    exporter:
+      otlp:
+        endpoint: ""
+        timeout: 15000
+        insecure: true

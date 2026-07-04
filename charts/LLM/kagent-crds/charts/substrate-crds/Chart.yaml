@@ -1,0 +1,14 @@
+apiVersion: v2
+appVersion: v0.0.6
+description: Agent Substrate CustomResourceDefinitions.
+home: https://github.com/agent-substrate/substrate
+keywords:
+- agent
+- actor
+- substrate
+- crds
+name: substrate-crds
+sources:
+- https://github.com/agent-substrate/substrate
+type: application
+version: 0.0.6

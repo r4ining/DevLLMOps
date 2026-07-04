@@ -1,0 +1,822 @@
+# Default values for kagent
+
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+
+# -- Enable IPv6/dual-stack support.
+# When true, configures all components for dual-stack (IPv4+IPv6) networking:
+#   - nginx listens on both IPv4 and IPv6 (adds `listen [::]:8080`)
+#   - Next.js binds to `::` instead of `0.0.0.0`
+#   - Agent pods bind to `::` for dual-stack reachability
+# Leave disabled on clusters where IPv6 is disabled at the kernel level.
+# @default -- false
+ipv6:
+  enabled: false
+
+tag: ""
+registry: "cr.kagent.dev"
+
+imagePullSecrets: []
+imagePullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Override the namespace
+# @default -- `.Release.Namespace`
+namespaceOverride: ""
+
+podAnnotations: {}
+
+# -- Additional labels to add to all Kubernetes resources
+labels: {}
+  # environment: production
+  # team: platform
+
+# -- Security context for all pods
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+# fsGroup: 2000
+
+# -- Security context for all containers
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+# runAsUser: 1000
+
+# ==============================================================================
+# CORE KAGENT COMPONENTS
+# ==============================================================================
+
+# -- Node taints which will be tolerated for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+tolerations: []
+
+# -- Node labels to match for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+nodeSelector: {}
+
+# ==============================================================================
+# DATABASE CONFIGURATION
+# ==============================================================================
+
+database:
+  postgres:
+    # -- External PostgreSQL connection string.
+    # Is always used if set regardless of the `.bundled.enabled` field.
+    url: ""
+    # -- Path to a file containing the database URL. Takes precedence over url when set.
+    # Is always used if set regardless of the `.bundled.enabled` field.
+    urlFile: ""
+    # -- Enable the pgvector migration
+    # Required to use features that depend on database vector capability. (e.g. long-term memory)
+    # Set to true when using an external PostgreSQL that has the pgvector extension installed.
+    vectorEnabled: false
+    # -- Bundled PostgreSQL instance — for development and evaluation only.
+    # Not suitable for production. Deployed when enabled is true and url/urlFile are not set.
+    bundled:
+      # -- Set to false to disable the bundled database and provide your own via url or urlFile.
+      enabled: true
+      image:
+        # -- Bundled PostgreSQL image registry
+        registry: docker.io
+        # -- Bundled PostgreSQL image repository (org/namespace)
+        repository: library
+        # -- Bundled PostgreSQL image name
+        name: postgres
+        # -- Bundled PostgreSQL image tag
+        tag: "18.3-alpine"
+        # -- Bundled PostgreSQL image pull policy
+        pullPolicy: IfNotPresent
+      # -- PersistentVolumeClaim size for demo PostgreSQL data
+      storage: 500Mi
+      # -- StorageClass for the PostgreSQL PVC. Defaults to the cluster default when empty.
+      storageClassName: ""
+      # The database name, user, and password are hardcoded for the bundled instance (all: "kagent").
+      # This is intentional for a dev/eval setup. Switch to an external database for production.
+      # -- Resource requests/limits for the demo PostgreSQL container
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      # -- Pod-level security context for the bundled PostgreSQL deployment.
+      podSecurityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container-level security context for the bundled PostgreSQL container.
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+
+# ==============================================================================
+# RBAC CONFIGURATION
+# ==============================================================================
+
+rbac:
+  # -- Namespaces in which to create Role and RoleBinding resources.
+  # If empty (default), the chart creates cluster-scoped ClusterRole and ClusterRoleBinding
+  # resources and the controller watches all namespaces.
+  # If set, the chart creates a Role + RoleBinding per listed namespace and the controller's
+  # WATCH_NAMESPACES is derived from this list (unless controller.watchNamespaces is set
+  # explicitly, which always takes precedence).
+  namespaces: []
+
+# ==============================================================================
+# CONTROLLER CONFIGURATION
+# ==============================================================================
+
+controller:
+  replicas: 1
+  loglevel: "info"
+  # Authentication mode: "unsecure" (default) or "trusted-proxy"
+  # - unsecure: uses X-User-Id header/query param or defaults to admin@kagent.dev
+  # - trusted-proxy: trusts JWT token from Authorization header (set by oauth2-proxy)
+  auth:
+    mode: unsecure
+    # JWT claim for user identity (default: "sub")
+    # Override only if your OIDC provider uses a different claim
+    userIdClaim: ""
+  # -- Global deployment defaults applied to all agent pods.
+  # Per-agent settings in the Agent CRD take precedence over these defaults.
+  agentDeployment:
+    # -- Default ServiceAccount name for agent pods.
+    # When set, agent pods that don't specify an explicit serviceAccountName
+    # will use this ServiceAccount instead of creating a per-agent one.
+    # Useful for Workload Identity (GCP, AWS IRSA, Azure Workload Identity).
+    # Precedence: agent-level serviceAccountName > this default > auto-created SA.
+    # @default -- "" (auto-create per-agent ServiceAccount)
+    serviceAccountName: ""
+    # -- Default labels applied to all agent pod templates.
+    # Per-agent labels in the Agent CRD take precedence over these defaults.
+    # @default -- {} (no extra labels)
+    podLabels: {}
+    # Example:
+    #   podLabels:
+    #     team: platform
+    #     environment: production
+    # -- Default host address for agent pods to bind to.
+    # Leave empty to use the controller's default fallback of "0.0.0.0".
+    # Automatically set to "::" when ipv6.enabled is true.
+    # Can be explicitly overridden here regardless of the ipv6 flag.
+    # @default -- "" (controller falls back to "0.0.0.0"; "::" when ipv6.enabled)
+    host: ""
+  # -- The base URL of the A2A Server endpoint, as advertised to clients.
+  # @default -- `http://<fullname>-controller.<namespace>.svc.cluster.local:<port>`
+  a2aBaseUrl: ""
+  agentImage:
+    registry: ""
+    repository: kagent-dev/kagent/app
+    tag: "" # Will default to global, then Chart version
+    pullPolicy: ""
+  # -- The image used by the skills-init container to clone skills from Git and pull OCI skill images.
+  skillsInitImage:
+    registry: ""
+    repository: kagent-dev/kagent/skills-init
+    tag: "" # Will default to global, then Chart version
+    pullPolicy: ""
+  # -- @deprecated Removed in 0.10.0. The A2A SDK now handles SSE buffering and timeouts
+  # internally. These values have no effect and will be removed in a future release.
+  streaming: null
+
+  # -- Namespaces the controller should watch.
+  # If empty, the controller will watch ALL available namespaces.
+  # @default -- [] (watches all available namespaces)
+  watchNamespaces: []
+  #  - watch-ns-1
+  #  - watch-ns-2
+
+  # -- Rewrite RemoteMCPServer tool URLs and the controller's tool-discovery
+  # dial from `https://host[:port]` to `http://host:<port-or-443>` so MCP
+  # traffic egresses in plaintext to a proxy that originates TLS upstream
+  # off by default.
+  mcpEgressPlaintext: false
+
+  podAnnotations: {}
+
+  # -- Node taints which will be tolerated for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+  tolerations: []
+
+  # -- Node labels to match for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+  nodeSelector: {}
+
+  image:
+    registry: ""
+    repository: kagent-dev/kagent/controller
+    tag: "" # Will default to global, then Chart version
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 2
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    ports:
+      port: 8083
+      targetPort: 8083
+  # -- Prometheus-style /metrics endpoint for the controller manager.
+  # When enabled, provisions a dedicated metrics Service plus the
+  # ClusterRoles required for authenticated scrapes. Bind
+  # `<fullname>-metrics-reader` to your Prometheus ServiceAccount to grant
+  # scrape access. Use `bindAddress` for any port change: the Service
+  # `targetPort` and the pod `containerPort` are derived from it at
+  # template time, so overriding `METRICS_BIND_ADDRESS` via
+  # `controller.env` shifts only the runtime listener and leaves the
+  # rendered Service pointing at the chart-time port. Setting
+  # `bindAddress: "0"` (or empty) is treated as a disable signal —
+  # equivalent to `enabled: false` — to keep faith with the controller
+  # binary's documented contract for `--metrics-bind-address`.
+  # @default -- disabled
+  metrics:
+    enabled: false
+    bindAddress: ":8443"
+    secureServing: true
+    service:
+      type: ClusterIP
+      port: 8443
+
+  # Extra controller env (mapped to flags via SUBSTRATE_* / OPENSHELL_* env names).
+  # OpenShell AgentHarness: set OPENSHELL_GATEWAY_URL (or leave defaults below).
+  env:
+    # - name: OPENSHELL_GATEWAY_URL
+    #   value: openshell.openshell.svc.cluster.local:8080
+    # - name: OPENSHELL_INSECURE
+    #   value: "true"
+
+  # Agent Substrate (OpenClaw harness runtime=substrate). Requires ate-system installed.
+  # kagent generates per-harness ActorTemplates and references an existing WorkerPool.
+  substrate:
+    enabled: false
+    ateApiEndpoint: ""
+    atenetRouterURL: ""
+    ateApiInsecure: false
+    ateApiTokenFile: /var/run/secrets/tokens/ate-api/token
+    ateApiTokenAudience: api.ate-system.svc
+    ateApiTokenExpirationSeconds: 3600
+    # Substrate ate-api-server identity for env source resolution (secretKeyRef/configMapKeyRef on ActorTemplates).
+    ateApiServer:
+      namespace: ate-system
+      serviceAccount: ate-api-server
+    defaultWorkerPool:
+      namespace: ""
+      name: ""
+    # pauseImage: "gcr.io/gke-release/pause@sha256:bcbd57ba5653580ec647b16d8163cdd1112df3609129b01f912a8032e48265da"
+    # runscAMD64URL: "gs://gvisor/releases/nightly/2026-06-02/x86_64/runsc"
+    # runscAMD64SHA256: "efd12935f6654c91a1389710eb8dfa4d12b6b9be00db87526dc2eb584ad00119"
+    # runscARM64URL: "gs://gvisor/releases/nightly/2026-05-19/aarch64/runsc"
+    # runscARM64SHA256: "1ba2366ae2efceba166046f51a4104f9261c9cb72c6db8f5b3fe2dc57dea86b9"
+    # Example when enabled:
+    #   enabled: true
+    #   ateApiEndpoint: "dns:///api.ate-system.svc:443"
+    #   atenetRouterURL: "http://atenet-router.ate-system.svc:80"
+    #   defaultWorkerPool:
+    #     name: "kagent-default"
+  envFrom: []
+
+  # Additional volumes on the output Deployment definition.
+  volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+  #     optional: false
+
+  # Additional volumeMounts on the output Deployment definition.
+  volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
+  # -- Custom startup probe for the controller container.
+  # Setting a value replaces the default probe entirely — include a handler
+  # (httpGet / exec / tcpSocket / grpc) when overriding.
+  # @default -- httpGet /health on port http, periodSeconds=15, initialDelaySeconds=15
+  startupProbe: {}
+
+  # -- Custom readiness probe for the controller container.
+  # Setting a value replaces the default probe entirely — include a handler
+  # (httpGet / exec / tcpSocket / grpc) when overriding.
+  # @default -- httpGet /health on port http, periodSeconds=30
+  readinessProbe: {}
+
+# -- Optional Agent Substrate WorkerPool installed by this chart. This is platform
+# capacity and is not owned by individual AgentHarness resources.
+substrateWorkerPool:
+  create: false
+  name: kagent-default
+  replicas: 1
+  ateomImage: ""
+
+# ==============================================================================
+# UI CONFIGURATION
+# ==============================================================================
+
+ui:
+  replicas: 1
+  image:
+    registry: ""
+    repository: kagent-dev/kagent/ui
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    ports:
+      port: 8080
+      targetPort: 8080
+    annotations: {}
+  # Authentication redirect configuration
+  # Change this if using a different auth proxy (e.g., Pomerium, Authelia)
+  auth:
+    # Path to redirect users to when they click "Sign in with SSO" on the login page
+    # Default: /oauth2/start (oauth2-proxy's authentication start endpoint)
+    ssoRedirectPath: "/oauth2/start"
+  env: {} # Additional configuration key-value pairs for the ui ConfigMap
+  # -- Additional request headers (beyond Authorization) the UI proxy will forward
+  # to the backend. Names are case-insensitive. Hop-by-hop headers (Connection,
+  # Transfer-Encoding, etc.) are silently dropped.
+  additionalForwardedHeaders: []
+  # Example:
+  #   additionalForwardedHeaders:
+  #     - X-Forwarded-User
+  #     - X-Forwarded-Email
+  # Browser uses this path on the UI hostname (nginx proxies /api → controller). Required for client-side /api and WebSockets from outside the cluster.
+  publicBackendUrl: "/api"
+  # Next.js server default when set (BACKEND_INTERNAL_URL). Override if the controller API base differs.
+  backendInternalUrl: ""
+  # -- Pod-level security context for the UI pod. Overrides the global podSecurityContext.
+  # @default -- (uses global podSecurityContext)
+  podSecurityContext: {}
+  # fsGroup: 2000
+  # -- Container-level security context for the UI container. Overrides the global securityContext.
+  # @default -- (uses global securityContext)
+  securityContext: {}
+  #   readOnlyRootFilesystem: true
+  # -- EmptyDir volume sizes for Next.js UI workload (typically used when enabling readOnlyRootFilesystem)
+  volumes:
+    # -- Size limit for Next.js build cache (.next/cache). Default 100Mi is sufficient for typical Next.js apps with moderate caching needs.
+    nextjsCache: 100Mi
+    # -- Size limit for temporary files (/tmp). Default 50Mi provides ample space for Next.js runtime temporary data.
+    tmp: 50Mi
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+  podAnnotations: {}
+
+  # -- Node taints which will be tolerated for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+  tolerations: []
+
+  # -- Node labels to match for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+  nodeSelector: {}
+  # -- Custom startup probe for the UI container.
+  # Override to adjust thresholds, use exec-based probes, or change the health path.
+  # @default -- httpGet /health on port http, periodSeconds=1, initialDelaySeconds=1
+  startupProbe: {}
+  # Example:
+  #   startupProbe:
+  #     httpGet:
+  #       path: /health
+  #       port: http
+  #     initialDelaySeconds: 10
+  #     periodSeconds: 5
+  #     failureThreshold: 20
+  # -- Custom readiness probe for the UI container.
+  # Override to adjust thresholds, use exec-based probes, or change the health path.
+  # @default -- httpGet /health on port http, periodSeconds=30
+  readinessProbe: {}
+  # Example:
+  #   readinessProbe:
+  #     httpGet:
+  #       path: /health
+  #       port: http
+  #     periodSeconds: 15
+  # -- Gates the OpenShift `Route` for the UI. Additionally conditional on the
+  # `route.openshift.io/v1` API being present, so it is a no-op off-OpenShift.
+  # Set to `false` to front the UI with your own Route/ingress or the bundled
+  # oauth2-proxy instead of the chart's edge-terminated Route.
+  route:
+    enabled: true
+# ==============================================================================
+# LLM PROVIDERS CONFIGURATION
+# ==============================================================================
+# https://kagent.dev/docs/getting-started/configuring-providers
+
+providers:
+  default: openAI
+  openAI:
+    provider: OpenAI
+    model: "gpt-4.1-mini"
+    apiKeySecretRef: kagent-openai
+    apiKeySecretKey: OPENAI_API_KEY
+    # apiKey: ""
+    # Optional TLS settings for the generated ModelConfig.
+    # This same block can be used under any provider.
+    # tls:
+    #   disableVerify: false
+    #   caCertSecretRef: ""
+    #   caCertSecretKey: ""
+    #   disableSystemCAs: false
+  ollama:
+    provider: Ollama
+    model: "llama3.2"
+    config:
+      host: host.docker.internal:11434
+      options:
+        num_ctx: "64000"
+
+  anthropic:
+    provider: Anthropic
+    model: "claude-haiku-4-5"
+    apiKeySecretRef: kagent-anthropic
+    apiKeySecretKey: ANTHROPIC_API_KEY
+    # apiKey: ""
+  azureOpenAI:
+    provider: AzureOpenAI
+    model: "gpt-4.1-mini"
+    apiKeySecretRef: kagent-azure-openai
+    apiKeySecretKey: AZUREOPENAI_API_KEY
+    # apiKey: ""
+    config:
+      apiVersion: "2023-05-15"
+      azureAdToken: ""
+      azureDeployment: ""
+      azureEndpoint: ""
+  gemini:
+    provider: Gemini
+    model: "gemini-2.0-flash-lite"
+    apiKeySecretRef: kagent-gemini
+    apiKeySecretKey: GOOGLE_API_KEY
+    # apiKey: ""
+
+# ==============================================================================
+# KMCP
+# ==============================================================================
+
+kmcp:
+  enabled: true
+  nameOverride: "kmcp"
+  fullnameOverride: "" # Override if desired
+  namespaceOverride: "" # Override if desired (in conjunction with fullnameOverride to drop the `kagent-` prefix if you want)
+
+# ==============================================================================
+# SUBSTRATE
+# ==============================================================================
+
+substrate:
+  enabled: false
+
+# ==============================================================================
+# BUILT-IN TOOLS
+# ==============================================================================
+
+kagent-tools:
+  enabled: true
+  nameOverride: tools
+  replicaCount: 1
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  tools:
+    loglevel: "debug"
+    metrics:
+      port: 8085 # Use a different port than the main service port (8084) to avoid duplicate port definitions
+
+# ==============================================================================
+# PROXY CONFIGURATION
+# ==============================================================================
+# Global proxy configuration for the controller
+# This proxy applies to all internally-built k8s URLs:
+# - Agents as tools (agent -> agent traffic)
+# - Services as MCP Tools
+# - MCPServer resources and RemoteMCPServer resources with internal k8s URLs
+# Set this once and the controller will apply it to all agents automatically
+# Note: RemoteMCPServer resources use user-supplied URLs and do not use this proxy unless the URL is an internal k8s URL.
+proxy:
+  # Proxy URL for internally-built k8s URLs
+  # Example: "http://proxy.kagent.svc.cluster.local:8080"
+  url: ""
+
+# ==============================================================================
+# AGENTS
+# ==============================================================================
+
+k8s-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+kgateway-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+istio-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+promql-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+observability-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+argo-rollouts-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+helm-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-policy-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-manager-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+cilium-debug-agent:
+  enabled: true
+  modelConfigRef: ""
+  memory:
+    enabled: false
+    modelConfigRef: ""
+    ttlDays: 15
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# ==============================================================================
+# MCP TOOLS
+# ==============================================================================
+
+grafana-mcp:
+  enabled: true
+  grafana:
+    url: "grafana.kagent:3000/api"
+    serviceAccountToken: ""
+    # apiKey: "" # Deprecated - use serviceAccountToken instead.
+    # secretRef: ""  # Name of Secret to reference (contains GRAFANA_SERVICE_ACCOUNT_TOKEN or GRAFANA_API_KEY)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+querydoc:
+  enabled: true
+  replicas: 1
+  image:
+    registry: ghcr.io
+    repository: kagent-dev/doc2vec/mcp
+    tag: 1.1.14
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  openai:
+    apiKey: ""
+    # secretRef: ""  # Name of existing Secret containing OPENAI_API_KEY. Takes precedence over apiKey.
+
+# ==============================================================================
+# OAUTH2-PROXY CONFIGURATION (Optional)
+# ==============================================================================
+# Enable oauth2-proxy subchart for OIDC authentication
+# Requires controller.auth.mode: trusted-proxy
+
+oauth2-proxy:
+  enabled: false
+
+  # Disable Redis - use cookie-based sessions
+  redis:
+    enabled: false
+  sessionStorage:
+    type: cookie
+
+  # Mount custom templates for branded login redirect
+  # The ConfigMap is created by templates/oauth2-proxy-templates.yaml
+  extraVolumes:
+    - name: custom-templates
+      configMap:
+        name: kagent-oauth2-proxy-templates
+
+  extraVolumeMounts:
+    - name: custom-templates
+      mountPath: /templates
+      readOnly: true
+
+  # Mount custom CA certificate for TLS verification (if needed)
+  # Add to extraVolumes:
+  #   - name: custom-ca-cert
+  #     secret:
+  #       secretName: my-ca-cert
+  #       items:
+  #         - key: ca.crt
+  #           path: ca.crt
+  # Add to extraVolumeMounts:
+  #   - name: custom-ca-cert
+  #     mountPath: /etc/ssl/certs/custom-ca.crt
+  #     subPath: ca.crt
+  #     readOnly: true
+  # Add to extraEnv:
+  #   - name: SSL_CERT_FILE
+  #     value: /etc/ssl/certs/custom-ca.crt
+
+  config:
+    # Option 1: Reference existing secret (recommended for production)
+    # Secret must contain: client-id, client-secret, cookie-secret
+    existingSecret: ""
+
+    # Option 2: Inline values (for dev/testing only, chart creates secret)
+    clientID: ""
+    clientSecret: ""
+    cookieSecret: ""
+
+  # Cluster-specific OIDC settings - override these per deployment
+  # These are set as env vars and referenced in args for easy patching
+  extraEnv:
+    - name: OIDC_ISSUER_URL
+      value: ""
+    - name: OIDC_REDIRECT_URL
+      value: ""
+    # IMPORTANT: This must match the UI service name, which is templated as
+    # "<release-name>-ui" (or "<fullnameOverride>-ui"). Override this value
+    # if your release name is not "kagent" or you set fullnameOverride.
+    - name: UPSTREAM_URL
+      value: "http://kagent-ui:8080"
+
+  # extraArgs as a map - each key becomes --key=value in container args
+  # Uses $(VAR_NAME) syntax to reference env vars set above
+  extraArgs:
+    provider: oidc
+    oidc-issuer-url: "$(OIDC_ISSUER_URL)"
+    redirect-url: "$(OIDC_REDIRECT_URL)"
+    upstream: "$(UPSTREAM_URL)"
+    email-domain: "*"
+    pass-authorization-header: true
+    set-authorization-header: true
+    approval-prompt: "auto"
+    scope: "openid profile email groups"
+    # Cookie security settings
+    cookie-secure: true
+    cookie-samesite: "lax"
+    # Allow API clients with valid JWT tokens to bypass OIDC flow
+    skip-jwt-bearer-tokens: true
+    # Skip authentication for kagent's branded login page, health checks, and static assets
+    # This allows unauthenticated users to see the landing page and k8s probes to work
+    skip-auth-route: "^/(health|login)$"
+    skip-auth-regex: "^/(login|_next/static|_next/image|login-bg\\.(jpg|png|webp)|logo-.*\\.png|favicon\\.ico|api/agentharnesses/.*/gateway).*$"
+    # Use custom templates that redirect to kagent's branded /login page
+    custom-templates-dir: "/templates"
+
+  service:
+    type: ClusterIP
+    portNumber: 4180
+
+# ==============================================================================
+# OBSERVABILITY
+# ==============================================================================
+
+otel:
+  tracing:
+    enabled: false
+    exporter:
+      otlp:
+        endpoint: ""
+        protocol: "grpc"
+        timeout: 15000 # milliseconds
+        insecure: true
+  logging:
+    enabled: false
+    exporter:
+      otlp:
+        endpoint: ""
+        timeout: 15000 # milliseconds
+        insecure: true

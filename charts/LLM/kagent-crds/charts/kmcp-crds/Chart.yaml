@@ -1,0 +1,18 @@
+annotations:
+  category: Infrastructure
+apiVersion: v2
+description: CRDs for KMCP (Kubernetes MCP Server Controller)
+home: https://github.com/kagent-dev/kmcp
+keywords:
+- mcp
+- kubernetes
+- controller
+- server
+maintainers:
+- email: maintainers@kagent.dev
+  name: kmcp-maintainers
+name: kmcp-crds
+sources:
+- https://github.com/kagent-dev/kmcp
+type: application
+version: 0.3.0

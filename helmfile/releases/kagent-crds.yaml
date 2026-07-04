@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/LLM/kagent-crds
+  version: 0.9.10
+  wait: true
+  installed: true
+  name: kagent-crds
+  namespace: kagent
+  skipDeps: true
+  labels:
+    app: kagent-crds
+  values:
+  - ../values/kagent-crds.yaml.gotmpl

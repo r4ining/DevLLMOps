@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/LLM/kagent
+  version: 0.9.10
+  wait: true
+  installed: true
+  name: kagent
+  namespace: kagent
+  skipDeps: true
+  labels:
+    app: kagent
+  values:
+  - ../values/kagent.yaml.gotmpl

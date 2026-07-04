@@ -1,0 +1,257 @@
+suite: test ui deployment
+templates:
+  - ui-deployment.yaml
+  - ui-nginx-configmap.yaml
+tests:
+  - it: should render ui deployment with default values
+    template: ui-deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-ui
+      - equal:
+          path: spec.replicas
+          value: 1
+      - hasDocuments:
+          count: 1
+
+  - it: should render ui deployment with custom replica count
+    template: ui-deployment.yaml
+    set:
+      ui:
+        replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should have correct ui container image
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: ui
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^cr\\.kagent\\.dev/kagent-dev/kagent/ui:.+"
+
+  - it: should use global tag when set
+    template: ui-deployment.yaml
+    set:
+      tag: "v1.0.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: cr.kagent.dev/kagent-dev/kagent/ui:v1.0.0
+
+  - it: should have correct ui resources
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 1000m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1Gi
+
+  - it: should have correct service account name
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-ui
+
+  - it: should have correct container port
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: should set podAnnotations
+    template: ui-deployment.yaml
+    set:
+      ui:
+        podAnnotations:
+          role: AI
+    asserts:
+      - isSubset:
+          path: spec.template.metadata.annotations
+          content:
+            role: AI
+
+  - it: should fallback to top-level podAnnotations
+    template: ui-deployment.yaml
+    set:
+      podAnnotations:
+        role: AI
+    asserts:
+      - isSubset:
+          path: spec.template.metadata.annotations
+          content:
+            role: AI
+
+  - it: should set nodeSelector
+    template: ui-deployment.yaml
+    set:
+      ui:
+        nodeSelector:
+          role: AI
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            role: AI
+
+  - it: should use default httpGet startup probe
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 1
+
+  - it: should use default httpGet readiness probe
+    template: ui-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /health
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 30
+
+  - it: should allow overriding startup probe
+    template: ui-deployment.yaml
+    set:
+      ui:
+        startupProbe:
+          exec:
+            command: ["curl", "-sf", "http://[::1]:8080/health"]
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          failureThreshold: 30
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.exec.command
+          value: ["curl", "-sf", "http://[::1]:8080/health"]
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 3
+      - notExists:
+          path: spec.template.spec.containers[0].startupProbe.httpGet
+
+  - it: should allow overriding readiness probe
+    template: ui-deployment.yaml
+    set:
+      ui:
+        readinessProbe:
+          exec:
+            command: ["curl", "-sf", "http://[::1]:8080/health"]
+          periodSeconds: 10
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value: ["curl", "-sf", "http://[::1]:8080/health"]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 10
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+
+  - it: should mount unified ui-config ConfigMap for nginx and supervisord
+    template: ui-deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ui-config
+            configMap:
+              name: RELEASE-NAME-ui-config
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ui-config
+            mountPath: /etc/nginx/nginx.conf
+            subPath: nginx.conf
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ui-config
+            mountPath: /etc/supervisor/conf.d/supervisord.conf
+            subPath: supervisord.conf
+            readOnly: true
+
+  - it: should include config checksum in pod annotations
+    template: ui-deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/ui-config"]
+
+  - it: should set tolerations
+    template: ui-deployment.yaml
+    set:
+      ui:
+        tolerations:
+          - key: role
+            operator: Equal
+            value: AI
+            effect: NoSchedule
+    asserts:
+      - contains:
+          any: true
+          path: spec.template.spec.tolerations
+          content:
+            key: role
+            value: AI
+            effect: NoSchedule
+            operator: Equal
+
+  - it: should use same-origin public API path and internal controller URL for nginx proxying
+    template: ui-deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NEXT_PUBLIC_BACKEND_URL
+            value: "/api"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BACKEND_INTERNAL_URL
+            value: "http://RELEASE-NAME-controller.NAMESPACE.svc.cluster.local:8083/api"
+
+  - it: should allow overriding ui.backendInternalUrl
+    template: ui-deployment.yaml
+    set:
+      ui:
+        backendInternalUrl: "http://custom-controller:9090/api"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BACKEND_INTERNAL_URL
+            value: "http://custom-controller:9090/api"
+
+  - it: should allow overriding ui.publicBackendUrl
+    template: ui-deployment.yaml
+    set:
+      ui:
+        publicBackendUrl: "https://example.com/api"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NEXT_PUBLIC_BACKEND_URL
+            value: "https://example.com/api"

@@ -1,0 +1,136 @@
+{{- define "kagent.getter.rules" -}}
+- apiGroups:
+  - kagent.dev
+  resources:
+  - agents
+  - sandboxagents
+  - agentharnesses
+  - modelconfigs
+  - modelproviderconfigs
+  - toolservers
+  - memories
+  - remotemcpservers
+  - mcpservers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kagent.dev
+  resources:
+  - agents/finalizers
+  - sandboxagents/finalizers
+  - agentharnesses/finalizers
+  - modelconfigs/finalizers
+  - modelproviderconfigs/finalizers
+  - toolservers/finalizers
+  - memories/finalizers
+  - remotemcpservers/finalizers
+  - mcpservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kagent.dev
+  resources:
+  - agents/status
+  - sandboxagents/status
+  - agentharnesses/status
+  - modelconfigs/status
+  - modelproviderconfigs/status
+  - toolservers/status
+  - memories/status
+  - remotemcpservers/status
+  - mcpservers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ate.dev
+  resources:
+  - workerpools
+  - actortemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ate.dev
+  resources:
+  - actortemplates/status
+  verbs:
+  - get
+- apiGroups:
+  - "apps"
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "batch"
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "rbac.authorization.k8s.io"
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - agents.x-k8s.io
+  resources:
+  - sandboxes
+  verbs:
+  - get
+  - list
+  - watch
+{{- end -}}
+
+{{- include "kagent.rbac.validate" . -}}
+{{- if .Values.rbac.namespaces }}
+{{- range $namespace := (.Values.rbac.namespaces | uniq | sortAlpha) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kagent.fullname" $ }}-getter-role
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "kagent.labels" $ | nindent 4 }}
+rules:
+  {{- include "kagent.getter.rules" $ | nindent 2 }}
+{{- end }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kagent.fullname" . }}-getter-role
+  labels:
+    {{- include "kagent.labels" . | nindent 4 }}
+rules:
+  {{- include "kagent.getter.rules" . | nindent 2 }}
+{{- end }}

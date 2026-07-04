@@ -1,0 +1,14 @@
+apiVersion: v2
+dependencies:
+- condition: kmcp.enabled
+  name: kmcp-crds
+  repository: oci://ghcr.io/kagent-dev/kmcp/helm
+  version: 0.3.0
+- condition: substrate.enabled
+  name: substrate-crds
+  repository: oci://ghcr.io/kagent-dev/substrate/helm
+  version: 0.0.6
+description: CRDs for kagent
+name: kagent-crds
+type: application
+version: 0.9.10

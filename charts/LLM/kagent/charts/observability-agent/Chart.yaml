@@ -1,0 +1,5 @@
+apiVersion: v2
+description: A Observability Agent for kagent
+name: observability-agent
+type: application
+version: 0.9.10
