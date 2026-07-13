@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-log-rsync-config
+  namespace: monitor
+  labels:
+    app: nginx-log-rsync
+data:
+  rsync-sync.sh: |
+    #!/bin/sh
+    set -ux
+
+    # 同步间隔（秒），可改成 15 或 30，或任意值
+    INTERVAL="30"
+    # 本地落盘的根目录（对应 hostPath: /data/nginx-log）
+    LOCAL_BASE="/data/nginx-log"
+    # 远程数据源列表，格式："<user>@<ip>:<远程日志目录>" 或 "<user>@<ip>:<ssh端口>:<远程日志目录>"，多个源用空格分隔
+    # 脚本会自动从每个源里提取 IP 作为子目录名，避免不同节点日志互相覆盖，最终落盘路径为 ${LOCAL_LOG_DIR}/<ip>/
+    # 不指定端口时默认使用 22
+    # 示例（请按实际节点信息修改）：
+    RSYNC_SOURCES="root@106.14.8.40:22:/var/log/nginx root@47.100.220.185:22:/var/log/nginx"
+
+    if [ -z "${RSYNC_SOURCES:-}" ]; then
+      echo "[FATAL] RSYNC_SOURCES 未配置，退出"
+      exit 1
+    fi
+
+    echo "[INFO] nginx-log-rsync 启动，同步间隔 ${INTERVAL}s，本地根目录 ${LOCAL_BASE}"
+    echo "[INFO] 数据源: ${RSYNC_SOURCES}"
+
+    SSH_BASE="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /app/id_rsa"
+
+    while true; do
+      for entry in ${RSYNC_SOURCES}; do
+        # entry 格式: user@ip:/path（默认22端口）或 user@ip:port:/path（自定义端口）
+        hostpart="${entry#*@}"
+        ip="${hostpart%%:*}"
+        afterfirstcolon="${hostpart#*:}"
+        if echo "${afterfirstcolon}" | grep -q '^/'; then
+          port="22"
+          src="${entry%/}/"
+        else
+          port="${afterfirstcolon%%:*}"
+          remotepath="${afterfirstcolon#*:}"
+          user="${entry%%@*}"
+          src="${user}@${ip}:${remotepath%/}/"
+        fi
+        dest="${LOCAL_BASE}/${ip}/"
+
+        mkdir -p "${dest}"
+        echo "[$(date '+%F %T')] 同步 ${ip}:${port} (${src}) -> ${dest}"
+        rsync -azvh --append-verify --delete --exclude "new-platform.*" -e "${SSH_BASE} -p ${port}" "${src}" "${dest}"
+        if [ $? -ne 0 ]; then
+          echo "[$(date '+%F %T')] [WARN] 同步 ${ip} 失败"
+        fi
+      done
+
+      chmod -R o+r ${LOCAL_BASE}
+      chmod o+x ${LOCAL_BASE} ${LOCAL_BASE}/*
+
+      sleep "${INTERVAL}"
+    done
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nginx-log-rsync-ssh-key
+  namespace: monitor
+  labels:
+    app: nginx-log-rsync
+type: Opaque
+stringData:
+  id_rsa: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+    QyNTUxOQAAACBomfHKmm0RKoBb7WgGN1MfA0zoaEoxbbPNyAqoRscYHAAAAJgzfQqcM30K
+    nAAAAAtzc2gtZWQyNTUxOQAAACBomfHKmm0RKoBb7WgGN1MfA0zoaEoxbbPNyAqoRscYHA
+    AAAEBpNSA8PVFwu6SnjXz8ErwcBZzQSj9pKZXJGDvjsoSLfGiZ8cqabREqgFvtaAY3Ux8D
+    TOhoSjFts83ICqhGxxgcAAAAD25naW54LWxvZy1yc3luYwECAwQFBg==
+    -----END OPENSSH PRIVATE KEY-----
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nginx-log-rsync
+  namespace: monitor
+  labels:
+    app: nginx-log-rsync
+spec:
+  selector:
+    matchLabels:
+      app: nginx-log-rsync
+  template:
+    metadata:
+      labels:
+        app: nginx-log-rsync
+    spec:
+      nodeSelector:
+        nginx-log: "true"
+      containers:
+      - name: rsync
+        image: registry.sy.com/base/rsync:3.0
+        command: ["/bin/sh", "/app/rsync-sync.sh"]
+        volumeMounts:
+        - name: script
+          mountPath: /app/rsync-sync.sh
+          subPath: rsync-sync.sh
+          readOnly: true
+        - name: nginx-log
+          mountPath: /data/nginx-log
+        - name: ssh-key
+          mountPath: /app/id_rsa
+          subPath: id_rsa
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+      volumes:
+      - name: script
+        configMap:
+          name: nginx-log-rsync-config
+          defaultMode: 0755
+      - name: nginx-log
+        hostPath:
+          path: /data/nginx-log
+          type: DirectoryOrCreate
+      - name: ssh-key
+        secret:
+          secretName: nginx-log-rsync-ssh-key
+          defaultMode: 0600
+      restartPolicy: Always
