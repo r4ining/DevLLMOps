@@ -18,7 +18,7 @@ data:
     # 脚本会自动从每个源里提取 IP 作为子目录名，避免不同节点日志互相覆盖，最终落盘路径为 ${LOCAL_LOG_DIR}/<ip>/
     # 不指定端口时默认使用 22
     # 示例（请按实际节点信息修改）：
-    RSYNC_SOURCES="root@106.14.8.40:22:/var/log/nginx root@47.100.220.185:22:/var/log/nginx"
+    RSYNC_SOURCES="root@10.1.1.1:22:/var/log/nginx root@10.1.1.2:22:/var/log/nginx"
 
     if [ -z "${RSYNC_SOURCES:-}" ]; then
       echo "[FATAL] RSYNC_SOURCES 未配置，退出"
@@ -49,7 +49,7 @@ data:
 
         mkdir -p "${dest}"
         echo "[$(date '+%F %T')] 同步 ${ip}:${port} (${src}) -> ${dest}"
-        rsync -azvh --append-verify --delete --exclude "new-platform.*" -e "${SSH_BASE} -p ${port}" "${src}" "${dest}"
+        rsync -azvh --inplace --delete --exclude "new-platform.*" -e "${SSH_BASE} -p ${port}" "${src}" "${dest}"
         if [ $? -ne 0 ]; then
           echo "[$(date '+%F %T')] [WARN] 同步 ${ip} 失败"
         fi
@@ -102,6 +102,9 @@ spec:
       - name: rsync
         image: registry.sy.com/base/rsync:3.0
         command: ["/bin/sh", "/app/rsync-sync.sh"]
+        env:
+        - name: TZ
+          value: "Asia/Shanghai"
         volumeMounts:
         - name: script
           mountPath: /app/rsync-sync.sh

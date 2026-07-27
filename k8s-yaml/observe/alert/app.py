@@ -7,12 +7,16 @@ import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from urllib.parse import unquote_plus
+from urllib.parse import unquote_plus, quote
 
 app = Flask(__name__)
 
 # office 飞书机器人 Webhook 地址 -- 如果没指定，默认使用
 webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/4d3fb56d-d2b3-4d47-b974-0469bab08ffb"
+
+# Alertmanager 对外访问地址（无鉴权 Ingress），用于拼接飞书卡片中的"一键静默"链接。
+# 未配置时不渲染静默链接，保持向后兼容。
+ALERTMANAGER_SILENCE_BASE_URL = "https://alertmanager.token.polar.com"
 
 # 日志配置：带上海时区时间戳
 _sh_tz = ZoneInfo("Asia/Shanghai")
@@ -39,6 +43,36 @@ MAX_MERGE_COUNT = int(os.environ.get("ALERT_MAX_MERGE_COUNT", "25"))
 # 若未来改为多副本或多 worker 部署，需要把缓冲区迁移到 Redis 等外部共享存储，否则聚合会失效。
 _alert_buffer = {}
 _buffer_lock = threading.Lock()
+
+def build_silence_link(alert):
+    """基于告警 labels 拼接 Alertmanager 静默页深链接（#/silences/new?filter=...）。
+    优先用 alertname+node定位到节点；没有 node 标签则退化为 namespace+pod，再退化为 instance；
+    都没有则仅按 alertname 静默。未配置 ALERTMANAGER_SILENCE_BASE_URL 时返回 None。"""
+    if not ALERTMANAGER_SILENCE_BASE_URL:
+        return None
+    labels = alert.get("labels", {})
+    alert_name = labels.get("alertname")
+    if not alert_name:
+        return None
+    matchers = [f'alertname="{alert_name}"']
+    if labels.get("node"):
+        matchers.append(f'node="{labels["node"]}"')
+    elif labels.get("namespace") and labels.get("pod"):
+        matchers.append(f'namespace="{labels["namespace"]}"')
+        matchers.append(f'pod="{labels["pod"]}"')
+    elif labels.get("instance"):
+        matchers.append(f'instance="{labels["instance"]}"')
+    filter_expr = "{" + ",".join(matchers) + "}"
+    return f"{ALERTMANAGER_SILENCE_BASE_URL}/#/silences/new?filter=" + quote(filter_expr, safe="")
+
+def build_group_silence_link(alert_name):
+    """仅按 alertname 拼接静默链接，用于一键静默同一告警名下的所有实例（聚合场景）。"""
+    if not ALERTMANAGER_SILENCE_BASE_URL:
+        return None
+    if not alert_name or alert_name == "Unknown":
+        return None
+    filter_expr = "{" + f'alertname="{alert_name}"' + "}"
+    return f"{ALERTMANAGER_SILENCE_BASE_URL}/#/silences/new?filter=" + quote(filter_expr, safe="")
 
 def format_time(timestr):
     """把 2025-08-08T06:55:43.825666166Z → 2025-08-08 06:55:43"""
@@ -231,11 +265,24 @@ def format_alert_to_feishu(alert):
         {"tag": "note", "elements": [{"tag": "plain_text", "content": f"告警触发时间：{start_time}"}]},
     ]
 
+    silence_link = build_silence_link(alert)
+    if silence_link:
+        elements.append({"tag": "hr"})
+        elements.append({
+            "tag": "action",
+            "actions": [{
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "🔕 一键静默此告警"},
+                "type": "danger",
+                "url": silence_link
+            }]
+        })
+
     webhook_msg = {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "===== == 告警 == ====="},
+                "title": {"tag": "plain_text", "content": "===== == 告警(Token集群) == ====="},
                 "template": "red"
             },
             "elements": elements
@@ -272,7 +319,7 @@ def format_resolved_to_feishu(alert):
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "===== == 恢复 == ====="},
+                "title": {"tag": "plain_text", "content": "===== == 恢复(Token集群) == ====="},
                 "template": "green"
             },
             "elements": elements
@@ -303,7 +350,7 @@ def format_merged_alerts_to_feishu(alerts, status, alert_name, total, part_index
     每条告警用 div 展示主体内容，note 展示时间等次要信息，hr 做分割线。"""
     is_firing = status == "firing"
 
-    title = "===== == 告警 == =====" if is_firing else "===== == 恢复 == ====="
+    title = "===== == 告警(Token集群) == =====" if is_firing else "===== == 恢复(Token集群) == ====="
 
     part_suffix = f"（第{part_index}/{total_parts}片）" if total_parts > 1 else ""
     header_content = "\n".join([
@@ -355,6 +402,20 @@ def format_merged_alerts_to_feishu(alerts, status, alert_name, total, part_index
             elements.append({"tag": "hr"})
             elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(main_lines)}})
             elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": f"告警恢复说明：{success_msg} ｜ 告警恢复时间：{end_time}"}]})
+
+    if is_firing:
+        group_silence_link = build_group_silence_link(alert_name)
+        if group_silence_link:
+            elements.append({"tag": "hr"})
+            elements.append({
+                "tag": "action",
+                "actions": [{
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": f"🔕 一键静默本组全部告警（共{total}条）"},
+                    "type": "danger",
+                    "url": group_silence_link
+                }]
+            })
 
     webhook_msg = {
         "msg_type": "interactive",
