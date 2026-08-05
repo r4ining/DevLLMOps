@@ -1,0 +1,323 @@
+# 镜像仓库：默认使用 quay.io，配置 __REGISTRY__ 时统一覆盖到私有仓库
+{{- $registry := .Values | get "__REGISTRY__" "quay.io" }}
+
+# Cilium agent 镜像
+image:
+  {{- if $registry }}
+  override: {{ $registry }}/cilium/cilium:v1.20.0
+  useDigest: false
+  {{- end }}
+  pullPolicy: IfNotPresent
+
+# Cilium Envoy（L7 代理、Gateway API、Ingress Controller 依赖）
+envoy:
+  enabled: false
+  {{- if $registry }}
+  image:
+    override: {{ $registry }}/cilium/cilium-envoy:v1.37.5-1782911245-7cffc778c923f68a77954a53b1a98d6b5353f004
+    useDigest: false
+    pullPolicy: IfNotPresent
+  {{- end }}
+
+# Cilium operator 镜像
+operator:
+  replicas: 1
+  {{- if $registry }}
+  image:
+    override: {{ $registry }}/cilium/operator-generic:v1.20.0
+    useDigest: false
+    pullPolicy: IfNotPresent
+  {{- end }}
+  prometheus:
+    serviceMonitor:
+      enabled: false
+      trustCRDsExist: true
+
+# node-init 节点初始化 DaemonSet（清理旧 CNI 残留等）
+nodeinit:
+  enabled: true
+  {{- if $registry }}
+  image:
+    override: {{ $registry }}/cilium/startup-script:1782916218-36ae25f
+    useDigest: false
+    pullPolicy: IfNotPresent
+  {{- end }}
+
+# preflight 升级前检查（升级 Cilium 时临时启用，正常关闭）
+preflight:
+  enabled: false
+  {{- if $registry }}
+  image:
+    override: {{ $registry }}/cilium/cilium:v1.20.0
+    useDigest: false
+    pullPolicy: IfNotPresent
+  envoy:
+    image:
+      override: {{ $registry }}/cilium/cilium-envoy:v1.37.5-1782911245-7cffc778c923f68a77954a53b1a98d6b5353f004
+      useDigest: false
+      pullPolicy: IfNotPresent
+  {{- end }}
+
+# Hubble 可观测性
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    {{- if $registry }}
+    image:
+      override: {{ $registry }}/cilium/hubble-relay:v1.20.0
+      useDigest: false
+      pullPolicy: IfNotPresent
+    {{- end }}
+  ui:
+    enabled: true
+    backend:
+      {{- if $registry }}
+      image:
+        override: {{ $registry }}/cilium/hubble-ui-backend:v0.13.5
+        useDigest: false
+        pullPolicy: IfNotPresent
+      {{- end }}
+    frontend:
+      {{- if $registry }}
+      image:
+        override: {{ $registry }}/cilium/hubble-ui:v0.13.5
+        useDigest: false
+        pullPolicy: IfNotPresent
+      {{- end }}
+  metrics:
+    enabled:
+    - dns:query;ignoreAAAA
+    - drop
+    - tcp
+    - flow
+    - port-distribution
+    - icmp
+    - http
+    serviceMonitor:
+      enabled: false
+      trustCRDsExist: true
+
+# Hubble TLS 证书生成 Job
+certgen:
+  {{- if $registry }}
+  image:
+    override: {{ $registry }}/cilium/certgen:v0.4.8
+    useDigest: false
+    pullPolicy: IfNotPresent
+  {{- end }}
+
+# cilium-agent Prometheus 指标
+# ServiceMonitor 需要先安装 kube-prometheus-stack CRD
+prometheus:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    trustCRDsExist: true
+
+# cilium-monitor sidecar（旧版可观测性，Hubble 已替代）
+monitor:
+  enabled: false
+
+# Grafana Dashboards（配合 grafana-operator）
+dashboards:
+  enabled: false
+
+# ============================================================================
+# 网络功能
+# ============================================================================
+
+# IPv4/IPv6
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+
+# kube-proxy 替代模式（"true"=完全替代, "false"=与 kube-proxy 共存）
+kubeProxyReplacement: "false"
+
+# Kubernetes NetworkPolicy 标准
+k8sNetworkPolicy:
+  enabled: true
+
+# Kubernetes Clusterwide NetworkPolicy
+k8sClusterNetworkPolicy:
+  enabled: false
+
+# per-endpoint 路由（替代 cilium_host 接口路由）
+endpointRoutes:
+  enabled: false
+
+# 主机防火墙
+hostFirewall:
+  enabled: false
+
+# 透明网络加密
+encryption:
+  enabled: false
+  # type: ipsec | wireguard | ztunnel
+  type: ipsec
+
+# Egress 网关（出口流量 SNAT）
+egressGateway:
+  enabled: false
+
+# 本地重定向策略（Node-Local DNS 等）
+localRedirectPolicies:
+  enabled: false
+
+# L2 邻居发现
+l2NeighDiscovery:
+  enabled: false
+
+# L2 服务公告（替代 MetalLB 等）
+l2announcements:
+  enabled: false
+
+# L2 Pod 公告
+l2podAnnouncements:
+  enabled: false
+
+# BGP 控制平面（替代 kube-router 等）
+bgpControlPlane:
+  enabled: false
+
+# 带宽管理（BBR）
+bandwidthManager:
+  enabled: false
+
+# Socket LB（节点内服务负载均衡）
+socketLB:
+  enabled: false
+
+# IP 伪装代理
+ipMasqAgent:
+  enabled: false
+
+# Node IPAM
+nodeIPAM:
+  enabled: false
+
+# SCTP 协议支持
+sctp:
+  enabled: false
+
+# 独立 DNS 代理
+standaloneDnsProxy:
+  enabled: false
+
+# ============================================================================
+# Ingress / Gateway API
+# ============================================================================
+
+# Cilium Ingress Controller
+ingressController:
+  enabled: false
+
+# Gateway API
+gatewayAPI:
+  enabled: false
+
+# Envoy Config（L7 策略）
+envoyConfig:
+  enabled: false
+
+# ============================================================================
+# 云厂商集成
+# ============================================================================
+
+aksbyocni:
+  enabled: false
+azure:
+  enabled: false
+alibabacloud:
+  enabled: false
+eni:
+  enabled: false
+gke:
+  enabled: false
+
+# ============================================================================
+# 高级功能
+# ============================================================================
+
+# ClusterMesh 多集群网格
+clustermesh:
+  useAPIServer: false
+  config:
+    enabled: false
+  apiserver:
+    {{- if $registry }}
+    image:
+      override: {{ $registry }}/cilium/clustermesh-apiserver:v1.20.0
+      useDigest: false
+      pullPolicy: IfNotPresent
+    {{- end }}
+
+# 认证（mTLS）
+authentication:
+  enabled: false
+  mutual:
+    spire:
+      enabled: false
+      {{- if $registry }}
+      image:
+        override: {{ $registry }}/cilium/ztunnel:v1.0.0
+        useDigest: false
+        pullPolicy: IfNotPresent
+      install:
+        initImage:
+          override: {{ $registry }}/library/busybox:1.38.0
+          useDigest: false
+          pullPolicy: IfNotPresent
+        agent:
+          image:
+            override: {{ $registry }}/spiffe/spire-agent:1.15.2
+            useDigest: false
+            pullPolicy: IfNotPresent
+        server:
+          image:
+            override: {{ $registry }}/spiffe/spire-server:1.15.2
+            useDigest: false
+            pullPolicy: IfNotPresent
+      {{- end }}
+
+# etcd 模式（默认使用 Kubernetes CRD，不使用 etcd）
+etcd:
+  enabled: false
+
+# 资源配额
+resourceQuotas:
+  enabled: false
+
+# Well-known identities
+wellKnownIdentities:
+  enabled: false
+
+# CiliumEndpointSlice（类似 EndpointSlice）
+ciliumEndpointSlice:
+  enabled: false
+
+# Datapath 插件
+datapathPlugins:
+  enabled: false
+
+# NAT46/64 网关
+nat46x64Gateway:
+  enabled: false
+
+# VTEP（VXLAN 隧道端点）
+vtep:
+  enabled: false
+
+# PMTU 发现
+pmtuDiscovery:
+  enabled: false
+
+# Debug 调试模式
+debug:
+  enabled: false
+
+# pprof 性能分析
+pprof:
+  enabled: false

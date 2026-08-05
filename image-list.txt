@@ -113,4 +113,20 @@ ubuntu:24.04
 registry.k8s.io/kwok/kwok:v0.7.0
 
 
+# cilium
+quay.io/cilium/cilium:v1.20.0
+quay.io/cilium/cilium-envoy:v1.37.5-1782911245-7cffc778c923f68a77954a53b1a98d6b5353f004
+quay.io/cilium/operator-generic:v1.20.0
+quay.io/cilium/certgen:v0.4.8
+quay.io/cilium/hubble-relay:v1.20.0
+quay.io/cilium/hubble-ui-backend:v0.13.5
+quay.io/cilium/hubble-ui:v0.13.5
+quay.io/cilium/ztunnel:v1.0.0
+quay.io/cilium/startup-script:1782916218-36ae25f
+quay.io/cilium/clustermesh-apiserver:v1.20.0
+docker.io/library/busybox:1.38.0
+ghcr.io/spiffe/spire-agent:1.15.2
+ghcr.io/spiffe/spire-server:1.15.2
+
+
 

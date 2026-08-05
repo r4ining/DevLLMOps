@@ -2,5 +2,6 @@ bases:
 - ../envs/environments.yaml
 
 helmfiles:
+  - ../releases/cilium.yaml
   - ../releases/traefik.yaml
   - ../releases/argo-cd.yaml

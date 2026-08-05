@@ -1,0 +1,15 @@
+bases:
+- ../envs/environments.yaml
+---
+releases:
+- chart: ../../charts/common/cilium
+  version: 1.20.0
+  wait: true
+  installed: true
+  name: cilium
+  namespace: kube-system
+  skipDeps: true
+  labels:
+    app: cilium
+  values:
+  - ../values/cilium.yaml.gotmpl
