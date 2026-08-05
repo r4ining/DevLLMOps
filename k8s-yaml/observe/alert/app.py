@@ -14,6 +14,10 @@ app = Flask(__name__)
 # office 飞书机器人 Webhook 地址 -- 如果没指定，默认使用
 webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/4d3fb56d-d2b3-4d47-b974-0469bab08ffb"
 
+# 集群名称：用于飞书卡片标题展示，格式为「<集群名称> | <状态> | <alertname>」
+# 可通过环境变量 CLUSTER_NAME 覆盖
+CLUSTER_NAME = os.environ.get("CLUSTER_NAME", "Token集群")
+
 # Alertmanager 对外访问地址（无鉴权 Ingress），用于拼接飞书卡片中的"一键静默"链接。
 # 未配置时不渲染静默链接，保持向后兼容。
 ALERTMANAGER_SILENCE_BASE_URL = "https://alertmanager.token.polar.com"
@@ -29,16 +33,43 @@ class _ShanghaiFormatter(logging.Formatter):
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 _handler = logging.StreamHandler()
-_handler.setFormatter(_ShanghaiFormatter("[%(asctime)s] [%(levelname)s] [%(threadName)s] %(message)s"))
+_handler.setFormatter(_ShanghaiFormatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+_handler.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
+
+# 把 werkzeug 针对 /health 的访问日志降级到 DEBUG，避免健康检查探针刷屏；其他接口访问日志保持 INFO。
+# 注意：必须显式给 _handler 设 INFO 级别——basicConfig 的 level 只作用于 root logger，
+# 而 werkzeug 的访问日志是 propagate 到 root 后由 handler 处理的，propagation 时只看 handler 级别，
+# 不再检查 logger 级别，否则降级后的 DEBUG 记录仍会被 NOTSET(0) 的 handler 放行。
+class _HealthAccessFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        if "/health" in msg and record.levelno == logging.INFO:
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
+
+logging.getLogger("werkzeug").addFilter(_HealthAccessFilter())
 
 # === 告警聚合配置（可通过环境变量覆盖） ===
 # 收到某个 alertname 的第一条告警后，固定等待该时长（秒）再统一发送，用于合并短时间内的同名告警，避免告警风暴
 DEBOUNCE_SECONDS = float(os.environ.get("ALERT_DEBOUNCE_SECONDS", "10"))
 # 单条飞书卡片消息最多聚合展示多少条告警明细，超出部分会拆分成多条消息依次发送
 MAX_MERGE_COUNT = int(os.environ.get("ALERT_MAX_MERGE_COUNT", "25"))
+# === 飞书发送重试配置 ===
+# 单次发送飞书失败时的最大重试次数（含首次共发送 SEND_MAX_ATTEMPTS 次）
+SEND_MAX_ATTEMPTS = int(os.environ.get("ALERT_SEND_MAX_ATTEMPTS", "3"))
+# 每次重试之间的退避间隔（秒），按列表依次取用，超出下标则取最后一个值
+SEND_RETRY_BACKOFFS = [float(x) for x in os.environ.get("ALERT_SEND_RETRY_BACKOFFS", "5,10,20").split(",")]
+# 单次 HTTP 请求超时（秒），重试时逐次递增以应对网络抖动
+SEND_TIMEOUT_BASE = float(os.environ.get("ALERT_SEND_TIMEOUT_BASE", "5"))
+# 分组最终发送失败后，重新入队等待下一轮重试的最大次数；超过则丢弃并打印 ERROR
+SEND_REQUEUE_MAX_RETRIES = int(os.environ.get("ALERT_SEND_REQUEUE_MAX_RETRIES", "3"))
 
-# 内存态缓冲区：key = (webhook, alertname, status) -> {"first_seen": ts, "alerts": [alert, ...]}
+# 内存态缓冲区：key = (webhook, alertname, status) -> {"first_seen": ts, "alerts": [alert, ...], "requeue_retries": int}
 # 注意：该方案假设服务以单进程单副本运行（当前 Deployment replicas=1，且用 `python app.py` 单进程启动）。
 # 若未来改为多副本或多 worker 部署，需要把缓冲区迁移到 Redis 等外部共享存储，否则聚合会失效。
 _alert_buffer = {}
@@ -138,7 +169,7 @@ def receive_alert():
             with _buffer_lock:
                 group = _alert_buffer.get(key)
                 if group is None:
-                    group = {"first_seen": time.time(), "alerts": []}
+                    group = {"first_seen": time.time(), "alerts": [], "requeue_retries": 0}
                     _alert_buffer[key] = group
                     logging.info("创建新的告警聚合分组 alertname=%s status=%s instance=%s，将在 %.0fs 后发送",
                                  alert_name, status, instance, DEBOUNCE_SECONDS)
@@ -157,7 +188,8 @@ def receive_alert():
 
 
 def _flush_loop():
-    """后台线程：定期扫描缓冲区，把超过 DEBOUNCE_SECONDS 未再更新的分组取出并发送。"""
+    """后台线程：定期扫描缓冲区，把超过 DEBOUNCE_SECONDS 未再更新的分组取出并发送。
+    发送失败的分组会按 SEND_REQUEUE_MAX_RETRIES 重新入队等待下一轮重试，避免网络抖动导致告警永久丢失。"""
     while True:
         time.sleep(1)
         ready_groups = []
@@ -179,13 +211,28 @@ def _flush_loop():
 
         for key, group in ready_groups:
             try:
-                _dispatch_group(key, group["alerts"])
+                ok = _dispatch_group(key, group["alerts"])
             except Exception:
                 logging.exception("发送聚合告警分组异常: key=%s", key)
+                ok = False
+            if not ok:
+                requeue_retries = group.get("requeue_retries", 0) + 1
+                if requeue_retries > SEND_REQUEUE_MAX_RETRIES:
+                    logging.error("分组发送最终失败且已达最大重入次数%d，丢弃告警 alertname=%s status=%s 共%d条",
+                                  SEND_REQUEUE_MAX_RETRIES, key[1], key[2], len(group["alerts"]))
+                    continue
+                # 重新入队：重置 first_seen 以便再等待 DEBOUNCE_SECONDS 后重试，保留 requeue_retries 计数
+                group["first_seen"] = time.time()
+                group["requeue_retries"] = requeue_retries
+                with _buffer_lock:
+                    _alert_buffer[key] = group
+                logging.warning("分组发送失败，重新入队等待重试 alertname=%s status=%s 共%d条 第%d次重入（上限%d）",
+                                key[1], key[2], len(group["alerts"]), requeue_retries, SEND_REQUEUE_MAX_RETRIES)
 
 
 def _dispatch_group(key, alerts):
-    """把一个分组内的告警发送出去：单条走原始格式，多条按 MAX_MERGE_COUNT 切片走合并格式。"""
+    """把一个分组内的告警发送出去：单条走原始格式，多条按 MAX_MERGE_COUNT 切片走合并格式。
+    返回 True 表示全部发送成功，False 表示存在失败分片。"""
     webhook, alert_name, status = key
     total = len(alerts)
 
@@ -202,15 +249,17 @@ def _dispatch_group(key, alerts):
         else:
             msg_json = format_resolved_to_feishu(alert)
         response = send_alert(msg_json, webhook)
+        ok = bool(response)
         logging.info("单条告警发送完成 alertname=%s instance=%s status=%s 结果=%s",
-                     alert_name, instance, status, "成功" if response else "失败")
-        return
+                     alert_name, instance, status, "成功" if ok else "失败")
+        return ok
 
     chunks = [alerts[i:i + MAX_MERGE_COUNT] for i in range(0, total, MAX_MERGE_COUNT)]
     total_parts = len(chunks)
     logging.info("分组含%d条告警，按MAX_MERGE_COUNT=%d拆分为%d片依次发送",
                  total, MAX_MERGE_COUNT, total_parts)
 
+    all_ok = True
     for part_index, chunk in enumerate(chunks, start=1):
         start_index = (part_index - 1) * MAX_MERGE_COUNT
         chunk_instances = [a.get("labels", {}).get("instance", "Unknown") for a in chunk]
@@ -220,23 +269,40 @@ def _dispatch_group(key, alerts):
             chunk, status, alert_name, total, part_index, total_parts, start_index
         )
         response = send_alert(msg_json, webhook)
+        ok = bool(response)
+        if not ok:
+            all_ok = False
         logging.info("聚合分片发送完成 alertname=%s status=%s 第%d/%d片 结果=%s",
-                     alert_name, status, part_index, total_parts, "成功" if response else "失败")
+                     alert_name, status, part_index, total_parts, "成功" if ok else "失败")
 
-    logging.info("分组全部发送完毕 alertname=%s status=%s 共%d条 %d片",
-                 alert_name, status, total, total_parts)
+    logging.info("分组全部发送完毕 alertname=%s status=%s 共%d条 %d片 结果=%s",
+                 alert_name, status, total, total_parts, "成功" if all_ok else "部分失败")
+    return all_ok
 
 def send_alert(json_data, webhook=None):
+    """发送飞书消息，带退避重试。成功返回 response 对象，最终失败返回 None。"""
     target = webhook or webhook_url
-    try:
-        logging.info("正在发送飞书消息到 webhook=%s", target)
-        response = requests.post(target, json=json.loads(json_data), timeout=5)
-        response.raise_for_status()
-        logging.info("发送飞书成功，状态码: %s", response.status_code)
-        return response
-    except requests.exceptions.RequestException as e:
-        logging.error("发送飞书失败，webhook=%s 错误: %s", target, e)
-        return None
+    last_err = None
+    for attempt in range(1, SEND_MAX_ATTEMPTS + 1):
+        timeout = SEND_TIMEOUT_BASE * attempt
+        try:
+            logging.info("正在发送飞书消息到 webhook=%s 第%d/%d次尝试 timeout=%.0fs",
+                         target, attempt, SEND_MAX_ATTEMPTS, timeout)
+            response = requests.post(target, json=json.loads(json_data), timeout=timeout)
+            response.raise_for_status()
+            logging.info("发送飞书成功，状态码: %s 第%d/%d次", response.status_code, attempt, SEND_MAX_ATTEMPTS)
+            return response
+        except requests.exceptions.RequestException as e:
+            last_err = e
+            logging.error("发送飞书失败 第%d/%d次 webhook=%s 错误: %s",
+                          attempt, SEND_MAX_ATTEMPTS, target, e)
+            if attempt < SEND_MAX_ATTEMPTS:
+                backoff = SEND_RETRY_BACKOFFS[min(attempt - 1, len(SEND_RETRY_BACKOFFS) - 1)]
+                logging.info("将在 %.0fs 后重试发送 webhook=%s", backoff, target)
+                time.sleep(backoff)
+    logging.error("发送飞书最终失败，已重试%d次 webhook=%s 最后错误: %s",
+                  SEND_MAX_ATTEMPTS, target, last_err)
+    return None
 
 def format_alert_to_feishu(alert):
     labels = alert.get("labels", {})
@@ -282,7 +348,7 @@ def format_alert_to_feishu(alert):
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "===== == 告警(Token集群) == ====="},
+                "title": {"tag": "plain_text", "content": f"{CLUSTER_NAME} | 告警 | {alert_name}"},
                 "template": "red"
             },
             "elements": elements
@@ -319,7 +385,7 @@ def format_resolved_to_feishu(alert):
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "===== == 恢复(Token集群) == ====="},
+                "title": {"tag": "plain_text", "content": f"{CLUSTER_NAME} | 恢复 | {alert_name}"},
                 "template": "green"
             },
             "elements": elements
@@ -350,7 +416,8 @@ def format_merged_alerts_to_feishu(alerts, status, alert_name, total, part_index
     每条告警用 div 展示主体内容，note 展示时间等次要信息，hr 做分割线。"""
     is_firing = status == "firing"
 
-    title = "===== == 告警(Token集群) == =====" if is_firing else "===== == 恢复(Token集群) == ====="
+    status_text = "告警" if is_firing else "恢复"
+    title = f"{CLUSTER_NAME} | {status_text} | {alert_name}"
 
     part_suffix = f"（第{part_index}/{total_parts}片）" if total_parts > 1 else ""
     header_content = "\n".join([
