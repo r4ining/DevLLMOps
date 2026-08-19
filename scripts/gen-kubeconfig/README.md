@@ -48,9 +48,8 @@
 # 指定集群名（默认为 kubernetes）
 ./gen-kubeconfig.sh zhangsan --rw --cn my-cluster
 
-# 保存到文件（两种方式）
+# 保存到文件
 ./gen-kubeconfig.sh zhangsan --rw -o ~/.kube/kc-zhangsan
-./gen-kubeconfig.sh zhangsan --rw > ~/.kube/kc-zhangsan
 
 # 验证
 KUBECONFIG=~/.kube/kc-zhangsan kubectl get pods -A
