@@ -4,7 +4,7 @@
 #
 # 用法:
 #   ./gen-kubeconfig.sh <user> [权限选项] [范围选项] [--cluster-name|--cn <name>] [--output|-o <file>]
-#       生成 kubeconfig，输出到 stdout 或指定文件
+#       生成 kubeconfig，打印到终端或保存到指定文件
 #   ./gen-kubeconfig.sh delete <user> [--readonly|--ro|--readwrite|--rw]
 #       删除该用户的资源（不指定权限则删除该用户所有资源）
 #
@@ -15,17 +15,18 @@
 # 注意: 同一用户可以同时拥有 ro 和 rw 权限（SA 名不同: ro-<user> / rw-<user>，互不影响）
 #
 # 组合:
-#   --readonly                                  集群只读   (ClusterRole: readonly-all)
-#   --readwrite                                 集群全权   (ClusterRole: cluster-admin)
-#   --readonly  --namespace prod[,staging]       ns 只读    (Role: view)
-#   --readwrite --namespace prod[,staging]       ns 全权    (Role: admin)
+#   --readonly                                  集群只读   (ClusterRole: global-readonly)
+#   --readwrite                                 集群读写   (ClusterRole: cluster-admin)
+#   --readonly  --namespace prod[,staging]       ns 只读    (global-readonly, RoleBinding 限定在 ns)
+#   --readwrite --namespace prod[,staging]       ns 读写    (cluster-admin, RoleBinding 限定在 ns)
 #
 # SA 命名:
 #   readonly  -> ro-<user>    (read-only)
 #   readwrite -> rw-<user>    (read-write)
 #
-# 共享资源（不会删除）:
-#   - ClusterRole: readonly-all
+# 共享/内置资源（delete 不删除）:
+#   - ClusterRole: global-readonly  (共享，缺失时由本脚本自动创建；所有 API group/资源只读, 含 CRD 实例与定义、Secret)
+#   - ClusterRole: cluster-admin   (K8s 内置，无需创建)
 #   - Namespace:   kube-system (SA 所在)
 #
 # 用户专属资源（gen 创建 / delete 清理，均带 label: managed-by=gen-kubeconfig,user=<user>）:
@@ -33,21 +34,27 @@
 #   - Secret (token):      <prefix>-<user>-token    (namespace: kube-system)
 #   - ClusterRoleBinding:  <prefix>-<user>-binding  (集群级模式)
 #   - RoleBinding:         <prefix>-<user>-binding  (ns 级模式, 每个目标 ns 一个)
-#   - kubeconfig:          直接输出到 stdout（不落盘）
+#   - kubeconfig:          打印到终端或保存到指定文件
 #
 # 安全保证:
 #   - 脚本不会修改当前环境的 kubeconfig 文件或 current-context
 #   - 所有 kubectl config 写操作都指向临时文件，输出后删除
 #   - 读取集群连接信息时显式使用脚本启动时的 KUBECONFIG（只读）
-#   - kubeconfig 只输出到 stdout，由调用方决定保存位置
+#   - 验证使用临时 kubeconfig 文件，完成后删除
 #
 set -euo pipefail
 
 # ============== 可配置项 ==============
-NS="kube-system"                       # SA 所在命名空间（共享，不删除）
-CLUSTER_ROLE_READONLY="readonly-all"   # 共享的只读 ClusterRole（不删除）
-CLUSTER_NAME="kubernetes"             # kubeconfig 中的集群名（默认，可被 --cluster-name 覆盖）
+NS="kube-system"                        # SA 所在命名空间（共享，不删除）
+CLUSTER_ROLE_READONLY="global-readonly"  # 共享只读 ClusterRole（缺失时自动创建，不删除）
+CLUSTER_ROLE_READWRITE="cluster-admin"  # 读写用内置 ClusterRole（无需创建）
+CLUSTER_NAME="token-prod"              # kubeconfig 中的集群名（默认，可被 --cluster-name 覆盖）
+VERIFY_CRD=""  # 可选：权限验证用的 CRD 资源（如 leaderworkersets.leaderworkerset.x-k8s.io，留空=跳过 CRD 检查）
 # ====================================
+
+# 运行时标志（由命令行参数设置）
+EXTRA_READONLY_NAMESPACES=()
+ALL_NS_ACCESS=""
 
 # ---- 环境隔离保护 ----
 ORIG_KUBECONFIG="${KUBECONFIG:-}"
@@ -58,26 +65,28 @@ else
   CURRENT_KUBECONFIG_FILE="${HOME}/.kube/config"
 fi
 
-# 共享 ClusterRole 定义（首次执行时创建，已存在则跳过）
+# 共享 ClusterRole 定义（缺失时由本脚本自动创建，幂等；已存在则不改动集群中的定义）
 readonly_CLUSTERROLE=$(cat <<'EOF'
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: readonly-all
+  name: global-readonly
+  labels:
+    managed-by: gen-kubeconfig
 rules:
 - apiGroups: ["*"]
   resources: ["*"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["*"]
-  resources: ["*/proxy"]
-  verbs: ["get"]
-- nonResourceURLs: ["*"]
-  verbs: ["get"]
+  resources:
+  - pods/portforward
+  - services/portforward
+  verbs: ["create", "get"]
 EOF
 )
 
 err()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*" >&2; exit 1; }
-info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $*" >&2; }
+info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $*"; }
 
 # 根据权限返回 SA 前缀
 sa_prefix() {
@@ -106,14 +115,16 @@ validate_ns() {
   [[ ${#n} -le 63 ]] || err "namespace 名过长(>63): ${n}"
 }
 
-# 确保共享 ClusterRole 存在（幂等）—— 集群只读模式需要
+# 确保共享 ClusterRole 存在（缺失时自动创建，幂等；已存在则保持集群中的定义不动）
+# 参数: role_name definition
 ensure_clusterrole() {
-  if kubectl get clusterrole "${CLUSTER_ROLE_READONLY}" >/dev/null 2>&1; then
-    info "共享 ClusterRole '${CLUSTER_ROLE_READONLY}' 已存在，跳过创建"
-  else
-    info "创建共享 ClusterRole '${CLUSTER_ROLE_READONLY}'"
-    echo "${readonly_CLUSTERROLE}" | kubectl apply -f -
+  local role="$1" definition="$2"
+  if kubectl get clusterrole "${role}" >/dev/null 2>&1; then
+    info "共享 ClusterRole '${role}' 已存在"
+    return 0
   fi
+  info "创建共享 ClusterRole '${role}'"
+  echo "${definition}" | kubectl apply -f -
 }
 
 # 确保命名空间存在（幂等）
@@ -144,19 +155,21 @@ cleanup_old_bindings() {
   # ClusterRoleBinding
   kubectl delete clusterrolebinding \
     -l "${label}" \
-    --ignore-not-found=true 2>/dev/null || true
+    --ignore-not-found=true || err "清理 ClusterRoleBinding 失败"
 
   # RoleBinding（跨所有 ns 查找）
   local rbs
   rbs=$(kubectl get rolebinding -A \
     -l "${label}" \
-    -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+    -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}') \
+    || err "查询 RoleBinding 失败"
   if [[ -n "${rbs}" ]]; then
     while IFS= read -r rb; do
       [[ -z "${rb}" ]] && continue
       local rb_ns="${rb%%/*}"
       local rb_name="${rb##*/}"
-      kubectl -n "${rb_ns}" delete rolebinding "${rb_name}" --ignore-not-found=true 2>/dev/null || true
+      kubectl -n "${rb_ns}" delete rolebinding "${rb_name}" --ignore-not-found=true \
+        || err "清理 RoleBinding ${rb_ns}/${rb_name} 失败"
     done <<< "${rbs}"
   fi
 }
@@ -170,10 +183,10 @@ cleanup_user_sa_secret() {
 
   kubectl -n "${NS}" delete secret \
     -l "${label}" \
-    --ignore-not-found=true 2>/dev/null || true
+    --ignore-not-found=true || err "清理 Secret 失败"
   kubectl -n "${NS}" delete serviceaccount \
     -l "${label}" \
-    --ignore-not-found=true 2>/dev/null || true
+    --ignore-not-found=true || err "清理 ServiceAccount 失败"
 }
 
 # 创建 binding
@@ -194,8 +207,8 @@ create_binding() {
       role_name="${CLUSTER_ROLE_READONLY}"
       info "创建 ClusterRoleBinding (集群只读, role=${role_name}) -> ${binding}"
     else
-      role_name="cluster-admin"
-      info "创建 ClusterRoleBinding (集群全权, role=${role_name}) -> ${binding}"
+      role_name="${CLUSTER_ROLE_READWRITE}"
+      info "创建 ClusterRoleBinding (集群读写, role=${role_name}) -> ${binding}"
     fi
     kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
@@ -218,11 +231,13 @@ subjects:
 EOF
   else
     # ---- namespace 级 ----
+    # RoleBinding 引用 ClusterRole（readonly=global-readonly / readwrite=cluster-admin），
+    # 权限覆盖该 ns 内所有资源（内置 + CRD），且限定在该 ns
     local role_name
     if [[ "${perm}" == "readonly" ]]; then
-      role_name="view"
+      role_name="${CLUSTER_ROLE_READONLY}"
     else
-      role_name="admin"
+      role_name="${CLUSTER_ROLE_READWRITE}"
     fi
     local target_ns
     for target_ns in ${namespaces[@]+"${namespaces[@]}"}; do
@@ -241,7 +256,7 @@ metadata:
     target-namespace: ${target_ns}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: ${role_name}
 subjects:
 - kind: ServiceAccount
@@ -252,9 +267,113 @@ EOF
   fi
 }
 
+# 额外权限与主权限共用 SA 和管理标签，重新生成时一起清理。
+create_extra_binding() {
+  local user="$1" sa="$2" role="$3" target_ns="${4:-}"
+  local kind="ClusterRoleBinding" binding="${sa}-all-${role}-binding" ns_line=""
+  if [[ -n "${target_ns}" ]]; then
+    kind="RoleBinding"
+    binding="${sa}-${role}-binding"
+    ns_line="  namespace: ${target_ns}"
+  fi
+  info "创建额外 ${kind}: role=${role}, namespace=${target_ns:-所有}, SA=${sa}"
+  kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ${kind}
+metadata:
+  name: ${binding}
+${ns_line}
+  labels:
+    managed-by: gen-kubeconfig
+    user: ${user}
+    perm: readwrite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ${role}
+subjects:
+- kind: ServiceAccount
+  name: ${sa}
+  namespace: ${NS}
+EOF
+}
+
+# 使用生成的身份检查实际权限；拒绝是正常结果，查询错误需单独报告。
+verify_permission() {
+  local config="$1" expected="$2" verb="$3" resource="$4"
+  shift 4
+  local result status=0
+  result=$(kubectl --kubeconfig="${config}" --request-timeout=10s \
+    auth can-i "${verb}" "${resource}" "$@") || status=$?
+  if [[ ( "${status}" == 0 && "${result}" == yes ) || ( "${status}" == 1 && "${result}" == no ) ]]; then
+    if [[ "${result}" == "${expected}" ]]; then
+      info "权限检查: ${verb} ${resource} $* => ${result} (符合预期)"
+    else
+      info "警告: ${verb} ${resource} $* => ${result}，预期 ${expected}；请检查已有授权或稍后重试"
+    fi
+  else
+    info "警告: 无法验证 ${verb} ${resource} $*（退出码 ${status}），请手动检查"
+  fi
+}
+
+verify_namespace() {
+  local config="$1" target="$2" read_expected="no" write_expected="no" n
+  if [[ "${scope}" == "cluster" || -n "${ALL_NS_ACCESS}" ]]; then
+    read_expected="yes"
+    if [[ ( "${scope}" == "cluster" && "${perm}" == "readwrite" ) || "${ALL_NS_ACCESS}" == "readwrite" ]]; then
+      write_expected="yes"
+    fi
+  fi
+  for n in ${namespaces[@]+"${namespaces[@]}"}; do
+    if [[ "${n}" == "${target}" ]]; then
+      read_expected="yes"
+      [[ "${perm}" == "readwrite" ]] && write_expected="yes"
+    fi
+  done
+  for n in ${EXTRA_READONLY_NAMESPACES[@]+"${EXTRA_READONLY_NAMESPACES[@]}"}; do
+    [[ "${n}" == "${target}" ]] && read_expected="yes"
+  done
+  verify_permission "${config}" "${read_expected}" list pods -n "${target}"
+  verify_permission "${config}" "${write_expected}" create configmaps -n "${target}"
+  if [[ -n "${VERIFY_CRD}" ]]; then
+    verify_permission "${config}" "${read_expected}" list "${VERIFY_CRD}" -n "${target}"
+    verify_permission "${config}" "${write_expected}" update "${VERIFY_CRD}" -n "${target}"
+  fi
+}
+
+verify_permissions() {
+  local config="$1" scope="$2" perm="$3"
+  shift 3
+  local namespaces=() n all_read="no" all_write="no"
+  [[ $# -gt 0 ]] && namespaces=("$@")
+  info "使用生成的 kubeconfig 自动验证权限（default 仅为样例，不代表所有其他 ns）"
+  for n in ${namespaces[@]+"${namespaces[@]}"}; do
+    verify_namespace "${config}" "${n}"
+  done
+  for n in ${EXTRA_READONLY_NAMESPACES[@]+"${EXTRA_READONLY_NAMESPACES[@]}"}; do
+    verify_namespace "${config}" "${n}"
+  done
+  verify_namespace "${config}" default
+  if [[ "${scope}" == "cluster" || -n "${ALL_NS_ACCESS}" ]]; then
+    all_read="yes"
+    if [[ ( "${scope}" == "cluster" && "${perm}" == "readwrite" ) || "${ALL_NS_ACCESS}" == "readwrite" ]]; then
+      all_write="yes"
+    fi
+  fi
+  verify_permission "${config}" "${all_read}" list pods --all-namespaces
+  verify_permission "${config}" "${all_write}" create configmaps --all-namespaces
+  if [[ -n "${VERIFY_CRD}" ]]; then
+    verify_permission "${config}" "${all_read}" list "${VERIFY_CRD}" --all-namespaces
+    verify_permission "${config}" "${all_write}" update "${VERIFY_CRD}" --all-namespaces
+  fi
+  if [[ "${scope}" == "cluster" || "${ALL_NS_ACCESS}" == "readonly" ]]; then
+    verify_permission "${config}" yes list customresourcedefinitions.apiextensions.k8s.io
+  fi
+}
+
 # 生成/刷新某用户的 kubeconfig
 # 参数: user perm scope cluster_name output_file namespaces...
-#   output_file 为空时输出到 stdout
+#   output_file 为空时打印 kubeconfig
 do_gen() {
   local user="$1" perm="$2" scope="$3" cluster_name="$4" output_file="$5"
   shift 5
@@ -274,17 +393,24 @@ do_gen() {
 
   # 准备与校验
   ensure_namespace "${NS}"
+  # 共享 ClusterRole 按需确保（缺失时自动创建，幂等；cluster-admin 为内置角色，无需处理）
+  if [[ "${perm}" == "readonly" || "${ALL_NS_ACCESS}" == "readonly" || ${#EXTRA_READONLY_NAMESPACES[@]:-0} -gt 0 ]]; then
+    ensure_clusterrole "${CLUSTER_ROLE_READONLY}" "${readonly_CLUSTERROLE}"
+  fi
   if [[ "${scope}" == "cluster" ]]; then
     if [[ "${perm}" == "readonly" ]]; then
-      ensure_clusterrole
       info "权限: 集群只读 (readonly)  范围: 集群级  SA=${sa}"
     else
-      info "权限: 集群全权 (readwrite)  范围: 集群级  SA=${sa}"
+      info "权限: 集群读写 (readwrite)  范围: 集群级  SA=${sa}"
     fi
   else
     [[ ${#namespaces[@]:-0} -gt 0 ]] || err "namespace 模式需要至少指定一个 ns"
     local n
     for n in ${namespaces[@]+"${namespaces[@]}"}; do
+      validate_ns "${n}"
+      ensure_namespace "${n}"
+    done
+    for n in ${EXTRA_READONLY_NAMESPACES[@]+"${EXTRA_READONLY_NAMESPACES[@]}"}; do
       validate_ns "${n}"
       ensure_namespace "${n}"
     done
@@ -338,6 +464,14 @@ EOF
 
   # 3) Binding
   create_binding "${user}" "${perm}" "${scope}" "${sa}" ${namespaces[@]+"${namespaces[@]}"}
+  local extra_ns
+  for extra_ns in ${EXTRA_READONLY_NAMESPACES[@]+"${EXTRA_READONLY_NAMESPACES[@]}"}; do
+    create_extra_binding "${user}" "${sa}" "${CLUSTER_ROLE_READONLY}" "${extra_ns}"
+  done
+  case "${ALL_NS_ACCESS}" in
+    readonly)  create_extra_binding "${user}" "${sa}" "${CLUSTER_ROLE_READONLY}" ;;
+    readwrite) create_extra_binding "${user}" "${sa}" "${CLUSTER_ROLE_READWRITE}" ;;
+  esac
 
   # 4) 等待 token 写入 Secret
   info "等待 token 写入 Secret '${secret}'..."
@@ -391,7 +525,9 @@ EOF
 
   rm -f "${ca_file}"
 
-  # 7) 输出 kubeconfig
+  # 7) 使用临时 kubeconfig 验证，然后输出或保存。
+  verify_permissions "${out}" "${scope}" "${perm}" ${namespaces[@]+"${namespaces[@]}"}
+
   if [[ -n "${output_file}" ]]; then
     # 写入指定文件
     cp "${out}" "${output_file}"
@@ -401,21 +537,29 @@ EOF
     if [[ "${scope}" == "namespace" ]]; then
       info "   授权 namespace: ${namespaces[*]:-}"
       info "   context 默认 ns: ${namespaces[0]:-}"
+      info "   只读 namespace: ${EXTRA_READONLY_NAMESPACES[*]:-(无)}; 所有 ns: ${ALL_NS_ACCESS:-无额外授权}"
     fi
     info "   已保存到: ${output_file}"
-    info "   验证: KUBECONFIG=${output_file} kubectl get pods -A"
+    if [[ "${scope}" == "namespace" ]]; then
+      info "   验证: kubectl --kubeconfig=\"${output_file}\" auth can-i create configmaps -n ${namespaces[0]}"
+      info "   验证其他 ns: kubectl --kubeconfig=\"${output_file}\" auth can-i list pods -n <namespace>"
+    else
+      info "   验证: kubectl --kubeconfig=\"${output_file}\" auth can-i list pods -A"
+    fi
   else
-    # 输出到 stdout（纯净 kubeconfig，无分隔线，可直接重定向）
+    # 打印 kubeconfig，用分隔线与普通日志区分。
     info "✅ 用户 '${user}' 的 kubeconfig 已生成 (perm=${perm}, scope=${scope}, SA=${sa})"
     info "   用户标识: ${user_ctx}"
     if [[ "${scope}" == "namespace" ]]; then
       info "   授权 namespace: ${namespaces[*]:-}"
       info "   context 默认 ns: ${namespaces[0]:-}"
+      info "   只读 namespace: ${EXTRA_READONLY_NAMESPACES[*]:-(无)}; 所有 ns: ${ALL_NS_ACCESS:-无额外授权}"
+      info "   保存后验证: kubectl --kubeconfig=<文件> auth can-i create configmaps -n ${namespaces[0]}"
     fi
     info "   当前环境 kubeconfig: ${CURRENT_KUBECONFIG_FILE}（脚本未修改它）"
-    info "   kubeconfig:"
-    info "----------------------------- KUBECONFIG ------------------------------"
+    printf '%s\n' '----------------------------- KUBECONFIG ------------------------------'
     cat "${out}"
+    printf '%s\n' '--------------------------- END KUBECONFIG ----------------------------'
   fi
 
   rm -f "${out}"
@@ -432,9 +576,9 @@ do_delete() {
   [[ -n "${perm}" ]] && label="${label},perm=${perm}"
 
   if [[ -n "${perm}" ]]; then
-    info "删除用户 '${user}' 的 ${perm} 权限资源（保留共享 ClusterRole '${CLUSTER_ROLE_READONLY}'）"
+    info "删除用户 '${user}' 的 ${perm} 权限资源（保留共享 ClusterRole '${CLUSTER_ROLE_READONLY}'，cluster-admin 为内置角色不动）"
   else
-    info "删除用户 '${user}' 的所有专属资源（保留共享 ClusterRole '${CLUSTER_ROLE_READONLY}'）"
+    info "删除用户 '${user}' 的所有专属资源（保留共享 ClusterRole '${CLUSTER_ROLE_READONLY}'，cluster-admin 为内置角色不动）"
   fi
 
   # 删除顺序：binding -> Secret -> SA
@@ -462,9 +606,17 @@ usage() {
   (不指定)                           集群级
   --namespace, --ns <ns[,ns...]>     指定 ns 级，可逗号分隔或多次指定
 
+额外权限（仅用于 --rw --ns）:
+  --readonly-ns <ns[,ns...]>         指定其他只读 ns，可多次指定
+  --all-ns-readonly                  集群只读（global-readonly，含 Secret/CRD 定义等所有资源）
+  --all-ns-readwrite                 集群读写（cluster-admin，高权限）
+
 其他选项:
-  --cluster-name, --cn <name>        kubeconfig 中的集群名（默认: kubernetes）
-  --output, -o <file>                写入指定文件（不指定则输出到 stdout）
+  --cluster-name, --cn <name>        kubeconfig 中的集群名（默认: ${CLUSTER_NAME}）
+  --output, -o <file>                写入指定文件（不指定则打印到终端）
+
+读写统一绑定内置 ClusterRole cluster-admin（ns 级通过 RoleBinding 限定范围）；
+共享 ClusterRole global-readonly 缺失时由本脚本自动创建（幂等，delete 不删除）。
 
 注意: 同一用户可以同时拥有 ro 和 rw 权限（SA 名不同，互不影响）
 
@@ -474,16 +626,39 @@ usage() {
   $0 zhangsan --ro  --ns prod                          # prod 只读 (ro-zhangsan)
   $0 zhangsan --rw --ns prod                           # prod 全权 (rw-zhangsan)
   $0 zhangsan --rw --ns prod,staging                   # prod+staging 全权
+  $0 zhangsan --rw --ns prod --readonly-ns staging     # prod 读写，staging 只读
+  $0 zhangsan --rw --ns prod --all-ns-readonly         # prod 读写，所有 ns 只读
+  $0 zhangsan --rw --ns prod --all-ns-readwrite        # 所有 ns 读写（高权限）
   $0 zhangsan --rw --ns prod --ns staging              # 同上
   $0 zhangsan --rw --cn my-cluster                     # 指定集群名 my-cluster
 
 保存与删除:
   $0 zhangsan --rw -o ~/.kube/kc-zhangsan              # 保存到文件
-  $0 zhangsan --rw > ~/.kube/kc-zhangsan               # 重定向保存（stdout 纯净）
+  $0 zhangsan --rw                                     # 打印 kubeconfig 和日志
   $0 delete zhangsan                                   # 删除该用户所有资源(ro+rw)
   $0 delete zhangsan --ro                              # 只删除只读权限
   $0 delete zhangsan --rw                              # 只删除完全权限
 EOF
+}
+
+# 解析 namespace 列表，空值不得退化为集群级授权。
+parse_namespaces() {
+  local option="$1" value="$2" item
+  local parts=()
+  [[ -n "${value}" && "${value}" != ,* && "${value}" != *, && "${value}" != *,,* ]] \
+    || err "${option} 需要非空 namespace 列表"
+  local IFS=','
+  read -ra parts <<< "${value}"
+  for item in "${parts[@]}"; do
+    item="${item## }"
+    item="${item%% }"
+    validate_ns "${item}"
+    if [[ "${option}" == "--readonly-ns" ]]; then
+      EXTRA_READONLY_NAMESPACES+=("${item}")
+    else
+      namespaces+=("${item}")
+    fi
+  done
 }
 
 main() {
@@ -521,18 +696,22 @@ main() {
             perm="readwrite"; shift ;;
           --namespace|--ns)
             [[ $# -ge 2 ]] || err "--namespace 需要参数: <ns[,ns...]>"
-            # 支持逗号分隔
-            local IFS=','
-            read -ra ns_arr <<< "$2"
-            local ns_item
-            for ns_item in "${ns_arr[@]}"; do
-              # 去除首尾空格
-              ns_item="${ns_item## }"
-              ns_item="${ns_item%% }"
-              [[ -n "${ns_item}" ]] && namespaces+=("${ns_item}")
-            done
+            parse_namespaces "$1" "$2"
             shift 2
             ;;
+          --readonly-ns)
+            [[ $# -ge 2 ]] || err "--readonly-ns 需要参数: <ns[,ns...]>"
+            parse_namespaces "$1" "$2"
+            shift 2
+            ;;
+          --all-ns-readonly)
+            [[ -z "${ALL_NS_ACCESS}" || "${ALL_NS_ACCESS}" == "readonly" ]] \
+              || err "--all-ns-readonly 与 --all-ns-readwrite 不能同时使用"
+            ALL_NS_ACCESS="readonly"; shift ;;
+          --all-ns-readwrite)
+            [[ -z "${ALL_NS_ACCESS}" || "${ALL_NS_ACCESS}" == "readwrite" ]] \
+              || err "--all-ns-readonly 与 --all-ns-readwrite 不能同时使用"
+            ALL_NS_ACCESS="readwrite"; shift ;;
           --cluster-name|--cn)
             [[ $# -ge 2 ]] || err "--cluster-name 需要参数: <name>"
             cluster_name="$2"
@@ -544,10 +723,14 @@ main() {
             shift 2
             ;;
           *)
-            err "未知参数: $1（可用: --readonly/--ro / --readwrite/--rw / --namespace/--ns <ns> / --cluster-name/--cn <name> / --output/-o <file>）"
+            err "未知参数: $1（可用: --readonly/--ro / --readwrite/--rw / --namespace/--ns <ns> / --readonly-ns <ns> / --all-ns-readonly / --all-ns-readwrite / --cluster-name/--cn <name> / --output/-o <file>）"
             ;;
         esac
       done
+      if [[ ${#EXTRA_READONLY_NAMESPACES[@]:-0} -gt 0 || -n "${ALL_NS_ACCESS}" ]]; then
+        [[ "${perm}" == "readwrite" && ${#namespaces[@]:-0} -gt 0 ]] \
+          || err "额外 namespace 权限仅支持 --rw --ns"
+      fi
       # 防止误覆盖当前 kubeconfig
       if [[ -n "${output_file}" ]]; then
         local abs_output
